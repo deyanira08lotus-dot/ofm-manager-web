@@ -416,6 +416,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
           wl = createWorldLeague(c.country, c.division, rating);
           backend.saveWorldLeague(wl).catch(() => {});
         }
+        if (!isMember(wl, c.id)) {
+          const joined = joinWorldLeague(wl, c, rating, u.uid);
+          if (!joined.error) {
+            wl = joined.league;
+            backend.saveWorldLeague(wl).catch(() => {});
+          }
+        }
         setWorld(wl);
 
         const [inc, out] = await Promise.all([
@@ -602,6 +609,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
           const lg = createLeague(res.club, sorted);
           await backend.saveLeague(lg);
           setLeague(lg);
+          const wid = worldLeagueId(res.club.country, res.club.division);
+          let wl = await backend.getWorldLeague(wid);
+          if (!wl) wl = createWorldLeague(res.club.country, res.club.division, squadStrength(sorted));
+          const joined = joinWorldLeague(wl, res.club, squadStrength(sorted), user.uid);
+          if (!joined.error) {
+            wl = joined.league;
+            await backend.saveWorldLeague(wl);
+            setWorld(wl);
+            const item: NewsItem = {
+              id: uid("news"), clubId: res.club.id, date: gameNow().toISOString(), category: "club",
+              title: "¡Bienvenido a la Liga Mundial!",
+              body: `Tu club ya está inscrito en la Liga Mundial · División ${res.club.division}.`,
+              read: false,
+            };
+            setNews((prev) => [item, ...prev]);
+            backend.addNews(res.club.id, item).catch(() => {});
+          } else {
+            setWorld(wl);
+          }
           setProfile({ ...profile, clubId: res.club.id, country: input.country });
         } finally {
           setLoadingClub(false);
