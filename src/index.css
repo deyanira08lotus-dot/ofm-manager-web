@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/**
+ * TEMA CLARO
+ * Truco de diseño: en toda la app se usan utilidades tipo `text-white/45`,
+ * `bg-white/5` y `border-white/8` como "tinta" y "veladuras". Aquí se redefine
+ * el token --color-white a un azul-tinta oscuro, de modo que esas utilidades
+ * pasan a ser texto oscuro y superficies grises suaves sobre fondo blanco,
+ * sin tener que tocar cada pantalla.
+ */
+@theme {
+  /* --- Superficies claras --- */
+  --color-ink-950: #f3f6fa; /* fondo de página */
+  --color-ink-900: #eef1f7; /* sidebar, inputs, modales, píldoras */
+  --color-ink-850: #ffffff; /* tarjetas */
+  --color-ink-800: #e6ebf3; /* hover / degradados suaves */
+  --color-ink-700: #d6dde8;
+  --color-ink-600: #c2cbd9;
+
+  /* --- Tinta (sustituye al blanco del tema oscuro) --- */
+  --color-white: #16202e;
+
+  /* --- Verde de marca, legible sobre blanco --- */
+  --color-turf-200: #0a6f4c;
+  --color-turf-300: #0a7f57;
+  --color-turf-400: #0b8f63;
+  --color-turf-500: #07784f;
+  --color-turf-600: #05613f;
+
+  /* --- Acentos oscurecidos para contraste sobre fondo claro --- */
+  --color-emerald-200: #056a4a;
+  --color-emerald-300: #047857;
+  --color-lime-300: #4d7c0f;
+  --color-yellow-300: #a16207;
+  --color-orange-300: #c2410c;
+  --color-rose-200: #a1113a;
+  --color-rose-300: #be123c;
+  --color-rose-400: #d01a45;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-sky-300: #0369a1;
+  --color-sky-400: #0284c7;
+  --color-fuchsia-300: #a21caf;
+
+  --font-display: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1100px 560px at 8% -12%, rgba(16, 185, 129, 0.16), transparent 62%),
+    radial-gradient(900px 520px at 100% 0%, rgba(56, 189, 248, 0.14), transparent 58%),
+    var(--color-ink-950);
+  background-attachment: fixed;
+  color: #16202e;
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c2cbd9 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c8d0dd;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #aab5c6;
+}
+
+::selection {
+  background: rgba(7, 120, 79, 0.18);
+}
+
+input[type="range"] {
+  accent-color: #07784f;
+}
+
+@keyframes fm-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.fm-fade { animation: fm-fade 0.28s ease-out both; }
+
+@keyframes fm-pop {
+  0% { opacity: 0; transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.fm-pop { animation: fm-pop 0.22s ease-out both; }
+
+@keyframes fm-pitch-jitter {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(var(--dx, 1px), var(--dy, 1px)); }
+}
+.fm-pitch-jitter {
+  animation-name: fm-pitch-jitter;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+
+.fm-scroll-x {
+  -webkit-overflow-scrolling: touch;
+}
+
+.safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}

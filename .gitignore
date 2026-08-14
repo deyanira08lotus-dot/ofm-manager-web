@@ -1,0 +1,27 @@
+# Dependencias
+node_modules
+firebase/cloud-functions/node_modules
+
+# Build
+dist
+dist-ssr
+*.local
+
+# Variables de entorno (NUNCA subir claves)
+.env
+.env.local
+.env.*.local
+
+# Firebase
+.firebase
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*.log
+
+# Editores / SO
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db

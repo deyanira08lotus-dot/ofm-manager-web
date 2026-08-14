@@ -1,0 +1,416 @@
+rules_version = '2';
+/**
+ * firebase/firestore.rules
+ * Copia TODO este archivo en Firebase Console -> Firestore Database -> Reglas -> Publicar.
+ *
+ * FILOSOFÍA DE SEGURIDAD
+ * - El usuario SOLO puede escribir campos "de intención" (táctica, entrenamiento, ajustes).
+ * - Dinero, jugadores, estadísticas, resultados, traspasos, draft, votos y premios
+ *   los escribe EXCLUSIVAMENTE el backend (Cloud Functions con Admin SDK, que se
+ *   salta estas reglas).
+ * - Si aún no has desplegado Functions, la creación del club se permite UNA sola vez
+ *   por usuario y con valores acotados (ver validaciones de createClub abajo).
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+    function unchanged(field) {
+      return !(field in request.resource.data) ||
+             request.resource.data[field] == resource.data[field];
+    }
+    function onlyFields(allowed) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowed);
+    }
+
+    /* ------------------------- USERS ------------------------- */
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if isOwner(uid)
+                    && request.resource.data.uid == uid
+                    && request.resource.data.managerLevel == 1
+                    && request.resource.data.managerXp == 0
+                    && request.resource.data.clubId == null;
+      /* El usuario solo toca datos cosméticos y preferencias (FASE 13).
+         El nivel de manager NO se guarda: se deriva de su rendimiento real. */
+      allow update: if isOwner(uid)
+                    && onlyFields([
+                         'managerName','lastSeen','clubId','country','settings',
+                         'avatarUrl','clubBadgeUrl','bio','notifPrefs'
+                       ])
+                    && (unchanged('managerLevel') && unchanged('managerXp') && unchanged('reputation') && unchanged('achievements'))
+                    && (!('bio' in request.resource.data) || request.resource.data.bio.size() <= 200)
+                    && (!('managerName' in request.resource.data) || request.resource.data.managerName.size() <= 28);
+      allow delete: if false;
+    }
+
+    /* ------------------------- CLUBS ------------------------- */
+    match /clubs/{clubId} {
+      allow read: if signedIn();
+
+      // Crear club: una sola vez, con presupuesto dentro de los presets permitidos.
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.id == clubId
+                    && request.resource.data.finances.balance in [4000000, 12000000, 30000000]
+                    && request.resource.data.record.points == 0
+                    && request.resource.data.trophies.size() == 0;
+
+      /* Gestión del club (FASES 2-3).
+         SIN Cloud Functions: el cliente aplica el motor económico local y guarda
+         el resultado. Las reglas acotan QUÉ campos puede tocar y bloquean lo
+         verdaderamente sensible (dueño, identidad, trofeos, presupuesto salarial).
+         CON Cloud Functions desplegadas -> sustituir por:
+             allow update: if false;
+         y usar las funciones callable `processEconomy` / `upgradeFacility`.      */
+      allow update: if isOwner(resource.data.ownerUid)
+                    && onlyFields([
+                         'tactics','training','updatedAt','colors',
+                         'stadium','facilities','finances','fanbase','board','reputation','record'
+                       ])
+                    && unchanged('ownerUid') && unchanged('id') && unchanged('name')
+                    && unchanged('country') && unchanged('leagueId') && unchanged('trophies')
+                    && unchanged('createdAt')
+                    // Techos anti-exploit: nadie se fabrica dinero infinito
+                    && request.resource.data.finances.balance < 5000000000
+                    && request.resource.data.finances.wageBudget == resource.data.finances.wageBudget
+                    && request.resource.data.reputation <= resource.data.reputation + 3
+                    && request.resource.data.stadium.capacity <= resource.data.stadium.capacity + 3000;
+      allow delete: if false;
+
+      /* Noticias del club: solo lectura para el dueño; marcar como leído permitido. */
+      match /news/{newsId} {
+        allow read: if signedIn();
+        allow create: if isOwner(get(/databases/$(database)/documents/clubs/$(clubId)).data.ownerUid);
+        allow update: if isOwner(get(/databases/$(database)/documents/clubs/$(clubId)).data.ownerUid)
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        allow delete: if false;
+      }
+
+      match /ledger/{entryId} { allow read: if signedIn(); allow write: if false; }
+
+      /* Informes de partido (FASE 2).
+         Sin Cloud Functions desplegadas, el cliente guarda el informe de SU club.
+         Con Functions activas cambia esta regla a: allow write: if false; */
+      match /matches/{matchId} {
+        allow read: if signedIn();
+        allow create: if isOwner(get(/databases/$(database)/documents/clubs/$(clubId)).data.ownerUid);
+        allow update, delete: if false;
+      }
+    }
+
+    /* ------------------- LIGAS / COMPETICIÓN (FASE 2) -------------------
+       Documento único por club: calendario, clasificación, estadísticas de
+       temporada y estado dinámico (forma/moral/físico/lesiones).
+       Contiene SOLO datos deportivos: no hay dinero ni atributos base, así
+       que un exploit aquí no permite enriquecerse ni inflar jugadores.
+       Con Cloud Functions desplegadas -> allow write: if false; y usar
+       la función callable `playMatch`.                                        */
+    match /leagues/{leagueId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == leagueId;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId') && unchanged('createdAt');
+      allow delete: if false;
+    }
+
+    /* ------------------------ PLAYERS ------------------------ */
+    match /players/{playerId} {
+      allow read: if signedIn();
+
+      /* Alta de jugador: plantilla inicial (FASE 1) o fichaje del mercado (FASE 4).
+         En ambos casos debe nacer SIN estadísticas: impide inyectar cracks hechos. */
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.stats.apps == 0
+                    && request.resource.data.stats.goals == 0
+                    && request.resource.data.status == 'active'
+                    && request.resource.data.origin in ['generated','transfer','free','academy','draft']
+                    && request.resource.data.overall <= 99
+                    && request.resource.data.potential <= 99;
+
+      /* El manager puede: entrenar (foco/rol), renovar contrato y desvincular al
+         vender (incluidos traspasos entre usuarios de la FASE 12).
+         NUNCA atributos, nivel, potencial, valor ni estadísticas. */
+      allow update: if isOwner(resource.data.ownerUid)
+                    && onlyFields(['trainingFocus','squadRole','contract','history','morale','clubId','ownerUid','status','origin'])
+                    && unchanged('attributes') && unchanged('overall') && unchanged('potential')
+                    && unchanged('value') && unchanged('stats') && unchanged('careerTotals')
+                    && unchanged('id') && unchanged('seed') && unchanged('birthDate')
+                    && unchanged('nationality') && unchanged('position');
+      allow delete: if false;
+    }
+
+    /* ------------------- MERCADO (FASE 4) ---------------------
+       Documento único por club: escaparate del periodo, jugadores listados,
+       ofertas recibidas, negociaciones e historial de operaciones.
+       El escaparate es determinista por semilla (periodo + país), así que un
+       cliente manipulado no puede "inventar" cracks: el servidor regenera y
+       compara la misma lista. Con Cloud Functions -> allow write: if false;   */
+    match /transfers/{marketId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == marketId;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId');
+      allow delete: if false;
+    }
+
+    /* ------------- ACADEMIA (FASE 5) y DRAFT (FASE 6) -------------
+       Igual que el mercado: contenido determinista por semilla
+       (club+periodo / país+periodo), así que el servidor puede regenerar
+       y verificar. El periodo NO puede retroceder -> impide "re-rollear"
+       promociones o drafts pasados para cazar un SS.
+       Con Cloud Functions -> allow write: if false; y usar las callables
+       `academyPick` y `draftPick`.                                       */
+    match /academies/{academyId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == academyId
+                    && request.resource.data.graduatesTotal == 0;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId')
+                    && request.resource.data.periodIndex >= resource.data.periodIndex
+                    // Máximo 2 promociones por promoción mensual
+                    && request.resource.data.promoted.size() <= 2;
+      allow delete: if false;
+    }
+
+    match /drafts/{draftId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == draftId
+                    && request.resource.data.userPicks.size() == 0
+                    && request.resource.data.phase == 'abierto';
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId')
+                    && request.resource.data.periodIndex >= resource.data.periodIndex
+                    // Nunca más de 2 selecciones y sin reabrir un draft cerrado
+                    && request.resource.data.userPicks.size() <= 2
+                    && !(resource.data.phase == 'cerrado' && request.resource.data.phase == 'abierto');
+      allow delete: if false;
+    }
+
+    /* ------------------- STAFF (FASE 7) ----------------------
+       El usuario contrata, renueva y despide; el NIVEL solo sube mediante
+       cursos del Centro de Formación (validados por duración y coste).      */
+    match /staff/{staffId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+                    && request.resource.data.level <= 99
+                    && request.resource.data.level <= request.resource.data.potential;
+      allow update: if signedIn()
+                    && onlyFields(['level','wage','experience','contractExpires','clubId','specialities'])
+                    && request.resource.data.level <= resource.data.potential
+                    // Nunca más de 8 niveles por escritura (curso de élite máx.)
+                    && request.resource.data.level <= resource.data.level + 8
+                    && unchanged('potential') && unchanged('id') && unchanged('name');
+      allow delete: if false;
+    }
+
+    /* Mercado de técnicos y cursos: determinista por semilla (club + periodo).
+       Con Cloud Functions -> allow write: if false; + callable `staffHire`.   */
+    match /staffMarkets/{marketId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == marketId
+                    && request.resource.data.coursesCompleted == 0;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId')
+                    && request.resource.data.periodIndex >= resource.data.periodIndex
+                    && request.resource.data.courses.size() <= 2;
+      allow delete: if false;
+    }
+
+    /* -------- COLECCIONES 100% SERVIDOR (solo lectura) -------- */
+    match /leagues/{doc}        { allow read: if signedIn(); allow write: if false; }
+    /* ------------- COPAS Y COMPETICIONES (FASE 11) -------------
+       Cuadros deterministas por semilla (club + temporada). Las reglas impiden
+       retroceder de temporada, reabrir una copa ya finalizada o inflar los
+       premios acumulados. Con Cloud Functions -> allow write: if false;      */
+    match /competitions/{compId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == compId
+                    && request.resource.data.history.size() == 0;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId')
+                    && request.resource.data.seasonId >= resource.data.seasonId
+                    // El historial de copas solo crece
+                    && request.resource.data.history.size() >= resource.data.history.size();
+      allow delete: if false;
+    }
+    match /matches/{doc}        { allow read: if signedIn(); allow write: if false; }
+    /* ------------- HISTORIAL DE TEMPORADAS (FASE 10) -------------
+       El cierre de temporada lo dispara el cron `seasonRollover`; sin Cloud
+       Functions lo aplica el cliente al detectar cambio de temporada. Las
+       reglas impiden retroceder de temporada o borrar el historial.        */
+    match /seasons/{seasonId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == seasonId;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId')
+                    // El historial solo crece y la temporada nunca retrocede
+                    && request.resource.data.seasons.size() >= resource.data.seasons.size()
+                    && request.resource.data.lastSeasonId >= resource.data.lastSeasonId;
+      allow delete: if false;
+    }
+    match /loans/{doc}          { allow read: if signedIn(); allow write: if false; }
+
+    /* --------------- SELECCIONES (FASE 8) ---------------------
+       Categorías, seleccionador, convocatorias, partidos y elecciones.
+       El recuento definitivo y la proclamación deberían hacerse en servidor
+       (callable `nationalTeamElection`); sin Functions, las reglas limitan
+       el daño: un usuario no puede alargar su mandato ni inventar trofeos
+       de golpe, y el voto es único por elección (colección `votes`).        */
+    match /nationalTeams/{ntId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == ntId;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId') && unchanged('country');
+      allow delete: if false;
+    }
+    /* ------------- VESTUARIO (FASE 15) ------------------------
+       Conversaciones, charlas de equipo y ruedas de prensa. Los efectos reales
+       se aplican sobre `players` y `clubs`, que ya están protegidos; aquí solo
+       se guardan los tiempos de espera y el registro, con topes de tamaño.    */
+    match /dressingRooms/{roomId} {
+      allow read: if isOwner(resource.data.ownerUid);
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == roomId
+                    && request.resource.data.chatLog.size() == 0;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId')
+                    && request.resource.data.chatLog.size() <= 30
+                    // Los tiempos de espera nunca retroceden (anti spam de charlas)
+                    && request.resource.data.pressAnsweredAt >= resource.data.pressAnsweredAt;
+      allow delete: if false;
+    }
+
+    /* ------------- SCOUTING (FASE 14) -------------------------
+       Misiones de ojeo y descubrimientos. Los hallazgos son deterministas por
+       semilla de misión, así que el servidor puede regenerarlos y verificar.
+       Las reglas impiden inventar descubrimientos sin haber pagado la misión.  */
+    match /scouting/{scoutId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == scoutId
+                    && request.resource.data.missions.size() == 0
+                    && request.resource.data.discoveries.size() == 0;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId')
+                    // Los contadores solo crecen y hay tope de misiones activas
+                    && request.resource.data.totalMissions >= resource.data.totalMissions
+                    && request.resource.data.totalSignings >= resource.data.totalSignings
+                    && request.resource.data.discoveries.size() <= 40;
+      allow delete: if false;
+    }
+
+    /* ------------- MULTIJUGADOR (FASE 12) ---------------------
+       Documentos COMPARTIDOS entre varios managers. Son los más delicados:
+       cualquiera de los participantes escribe, así que las reglas limitan
+       estrictamente qué puede cambiar.
+       Con Cloud Functions -> allow write: if false; y callable `playWorldMatch`. */
+    match /worldLeagues/{leagueId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+                    && request.resource.data.id == leagueId
+                    && request.resource.data.status == 'abierta'
+                    && request.resource.data.fixtures.size() == 0;
+      // Solo un miembro de la liga puede actualizarla, y nunca cambia su identidad
+      allow update: if signedIn()
+                    && unchanged('id') && unchanged('country')
+                    && unchanged('division') && unchanged('seasonId') && unchanged('createdAt')
+                    && request.resource.data.members.size() == resource.data.members.size()
+                    && request.resource.data.capacity == resource.data.capacity;
+      allow delete: if false;
+    }
+
+    /* Ofertas entre managers. El emisor la crea; SOLO el receptor la resuelve.
+       El dinero se mueve en los documentos de club de cada uno (liquidación
+       en dos pasos), así que nadie escribe nunca en la caja ajena.          */
+    match /transferOffers/{offerId} {
+      allow read: if signedIn()
+                  && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow create: if signedIn()
+                    && request.resource.data.fromUid == request.auth.uid
+                    && request.resource.data.toUid != request.auth.uid
+                    && request.resource.data.status == 'pendiente'
+                    && request.resource.data.amount > 0
+                    && request.resource.data.amount < 500000000;
+      // El receptor acepta/rechaza; el emisor solo marca 'liquidada' al pagar
+      allow update: if signedIn()
+                    && unchanged('fromUid') && unchanged('toUid') && unchanged('amount')
+                    && unchanged('playerId') && unchanged('createdAt')
+                    && (
+                         (resource.data.toUid == request.auth.uid
+                           && request.resource.data.status in ['aceptada','rechazada'])
+                         || (resource.data.fromUid == request.auth.uid
+                           && resource.data.status == 'aceptada'
+                           && request.resource.data.status == 'liquidada')
+                       );
+      allow delete: if false;
+    }
+
+    /* Rankings agregados: los escribe SOLO el cron `rebuildRankings`.
+       Una lectura devuelve el top completo (coste O(1) por usuario).       */
+    match /rankings/{doc}       { allow read: if signedIn(); allow write: if false; }
+    match /elections/{doc}      { allow read: if signedIn(); allow write: if false; }
+    /* ------------- FAMA, LOGROS Y RÉCORDS (FASE 9) -------------
+       Los logros se validan por progreso calculado del propio estado del club
+       (que ya está protegido), así que un usuario no puede "regalarse" un
+       logro sin cumplir la condición: el servidor recalcula con la misma
+       función `evaluateAchievements`. Los récords solo pueden crecer.       */
+    match /achievements/{fameId} {
+      allow read: if signedIn();
+      allow create: if isOwner(request.resource.data.ownerUid)
+                    && request.resource.data.clubId == fameId
+                    && request.resource.data.unlocked.size() == 0;
+      allow update: if isOwner(resource.data.ownerUid)
+                    && unchanged('ownerUid') && unchanged('clubId')
+                    // Los logros nunca se pierden ni se otorgan en bloque
+                    && request.resource.data.unlocked.size() >= resource.data.unlocked.size()
+                    && request.resource.data.unlocked.size() <= resource.data.unlocked.size() + 4
+                    // Los récords son monótonos crecientes
+                    && request.resource.data.records.longestUnbeaten >= resource.data.records.longestUnbeaten
+                    && request.resource.data.records.highestAttendance >= resource.data.records.highestAttendance;
+      allow delete: if false;
+    }
+    match /finances/{doc}       { allow read: if signedIn(); allow write: if false; }
+
+    /* --------- COLAS DE INTENCIÓN (el usuario pide, el server ejecuta) --------- */
+    // El cliente crea una "orden" y una Cloud Function la valida y la aplica.
+    match /commands/{commandId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if signedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.type in [
+                         'transferBid','listPlayer','loanOffer','signFreeAgent',
+                         'upgradeFacility','academyPick','draftPick','staffHire',
+                         'renewContract','setTicketPrice','applyNationalCoach','vote'
+                       ];
+      allow update, delete: if false;
+    }
+
+    match /votes/{voteId} {
+      allow read: if signedIn();
+      // Un voto por usuario y elección; el recuento lo hace el servidor.
+      allow create: if signedIn()
+                    && voteId == request.auth.uid + '_' + request.resource.data.electionId
+                    && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /notifications/{uid}/items/{itemId} {
+      allow read: if isOwner(uid);
+      allow update: if isOwner(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create, delete: if false;
+    }
+
+    // Todo lo no contemplado queda bloqueado.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

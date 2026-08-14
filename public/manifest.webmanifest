@@ -1,0 +1,17 @@
+{
+  "name": "Gestor Pro · Fútbol Manager Online",
+  "short_name": "Gestor Pro",
+  "description": "Juego de fútbol manager online: crea tu club, desarrolla jugadores y compite contra otros managers.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f3f6fa",
+  "theme_color": "#07784f",
+  "lang": "es",
+  "categories": ["games", "sports"],
+  "icons": [
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
