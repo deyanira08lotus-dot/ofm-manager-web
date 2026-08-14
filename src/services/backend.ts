@@ -633,7 +633,7 @@ const firebaseBackend: Backend = {
     }
     // 2) Camino sin Functions: escritura en lote protegida por reglas
     //    (las reglas impiden crear un 2º club y modificar el saldo después).
-    const { doc, writeBatch } = await import("firebase/firestore");
+    const { doc, setDoc, writeBatch } = await import("firebase/firestore");
     const existing = await this.getClubByOwner(input.ownerUid);
     if (existing) throw new Error("Este usuario ya tiene un club.");
     const bundle = createClubBundle(input);
@@ -641,13 +641,15 @@ const firebaseBackend: Backend = {
     batch.set(doc(ctx.db, "clubs", bundle.club.id), bundle.club);
     bundle.players.forEach((p) => batch.set(doc(ctx.db, "players", p.id), p));
     bundle.staff.forEach((s) => batch.set(doc(ctx.db, "staff", s.id), { ...s, clubId: bundle.club.id }));
-    bundle.news.forEach((n) => batch.set(doc(ctx.db, "clubs", bundle.club.id, "news", n.id), n));
     batch.set(
       doc(ctx.db, "users", input.ownerUid),
       { clubId: bundle.club.id, country: input.country },
       { merge: true }
     );
     await batch.commit();
+    await Promise.all(
+      bundle.news.map((n) => setDoc(doc(ctx.db, "clubs", bundle.club.id, "news", n.id), n))
+    );
     return { club: bundle.club, players: bundle.players };
   },
 
