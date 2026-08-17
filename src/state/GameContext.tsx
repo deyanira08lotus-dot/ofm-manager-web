@@ -12,7 +12,7 @@ import type { Club, NewsItem, Player, StaffMember, Tactics, UserProfile } from "
 import { backend, type AuthUser, type RankingRow } from "@/services/backend";
 import type { CreateClubInput } from "@/game/club";
 import {
-  buildAiTeam, buildUserTeam, clubOf, commitLiveResult, createLeague, mergePlayers,
+  buildAiTeam, buildUserTeam, clubOf, createLeague, mergePlayers,
   nextFixture, playFriendly as simFriendly, playNextRound, recoverConditions, sortedTable,
   type LeagueState,
 } from "@/game/league";
@@ -76,7 +76,8 @@ import {
 } from "@/game/dressingroom";
 import {
   acceptUserOffer, buildOffer, createWorldLeague, isMember, joinWorldLeague, leaveWorldLeague,
-  playWorldRound, settleOffer, startWorldLeague, validateOffer, worldLeagueId,
+  commitWorldLiveResult, nextWorldFixture, playWorldRound, settleOffer, startWorldLeague, validateOffer,
+  worldLeagueId, worldMember,
   type UserTransferOffer, type WorldLeague,
 } from "@/game/multiplayer";
 import { SQUAD_MAX } from "@/game/market";
@@ -1419,23 +1420,26 @@ export function GameProvider({ children }: { children: ReactNode }) {
       liveMatch,
 
       async startLiveMatch() {
-        if (!club || !league) return "Sin datos";
-        const fx = nextFixture(league);
+        if (!club || !world) return "Sin datos";
+        const fx = nextWorldFixture(world, club.id);
         if (!fx) return "No hay partidos pendientes.";
         if (Date.parse(fx.date) > gameNow().getTime()) return "Todavía no es la fecha del partido.";
         const isHome = fx.homeId === club.id;
-        const rival = clubOf(league, isHome ? fx.awayId : fx.homeId);
+        const rival = worldMember(world, isHome ? fx.awayId : fx.homeId);
         if (!rival) return "Rival no encontrado.";
 
         const userTeam = buildUserTeam(club, players, coachLevel);
-        const aiTeam = buildAiTeam(rival, league.country, `${league.id}:${fx.id}`);
+        const aiTeam = buildAiTeam(rival, rival.country, `${world.id}:${fx.id}`);
+        aiTeam.name = rival.name;
+        aiTeam.short = rival.shortName;
+        aiTeam.colors = rival.colors;
         setLiveMatch(createLiveMatch({
           id: `ml_${fx.id}_${uid("x").slice(-5)}`,
-          seed: `${league.id}:${fx.id}:${league.seasonId}`,
+          seed: `${world.id}:${fx.id}:${world.seasonId}`,
           date: fx.date,
-          competition: `${league.name} · Jornada ${fx.round}`,
+          competition: `${world.name} · Jornada ${fx.round}`,
           round: fx.round,
-          leagueId: league.id,
+          leagueId: world.id,
           fixtureId: fx.id,
           home: isHome ? userTeam : aiTeam,
           away: isHome ? aiTeam : userTeam,
@@ -1468,24 +1472,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
       },
 
       async finishLiveMatch() {
-        if (!club || !league || !liveMatch) return null;
+        if (!club || !liveMatch) return null;
         const finished = liveMatch.finished ? liveMatch : advanceLive(liveMatch, 90).state;
         const match = buildResult(finished);
-        const nextLeague = finished.fixtureId
-          ? commitLiveResult({ league, fixtureId: finished.fixtureId, match })
-          : league;
+        const nextWorld = world && finished.fixtureId
+          ? commitWorldLiveResult({ league: world, fixtureId: finished.fixtureId, match })
+          : world;
 
-        setLeague(nextLeague);
+        if (nextWorld && finished.fixtureId) {
+          setWorld(nextWorld);
+          await backend.saveWorldLeague(nextWorld);
+        }
         setLastMatch(match);
         setMatches((prev) => [match, ...prev].slice(0, 30));
         setLiveMatch(null);
-        await backend.saveLeague(nextLeague);
         backend.saveMatch(club.id, match).catch(() => {});
 
         const us = match.userSide === "home" ? match.home : match.away;
         const them = match.userSide === "home" ? match.away : match.home;
         const outcome = us.goals > them.goals ? "win" : us.goals === them.goals ? "draw" : "loss";
-        const rival = nextLeague.clubs.find((c) => c.id === them.clubId);
+        const rival = (nextWorld ? worldMember(nextWorld, them.clubId) : undefined)
+          ?? league?.clubs.find((c) => c.id === them.clubId);
 
         let updated = applyResultEffects(club, outcome as "win" | "draw" | "loss", rival?.rating ?? 55);
         let gate = null;
@@ -1504,13 +1511,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
         backend.saveClub(updated).catch(() => {});
 
         if (fame) {
-          const position = sortedTable(nextLeague).findIndex((r) => r.clubId === club.id) + 1;
+          const position = nextWorld
+            ? Object.values(nextWorld.table)
+                .sort((a, b) => b.points - a.points || b.gf - b.ga - (a.gf - a.ga) || b.gf - a.gf)
+                .findIndex((r) => r.clubId === club.id) + 1
+            : 0;
           let nextFame = updateRecords(fame, match, updated, gate?.attendance ?? 0, position);
-          nextFame = { ...nextFame, legends: computeLegends(rawPlayers, nextLeague, national) };
+          nextFame = { ...nextFame, legends: computeLegends(rawPlayers, league, national) };
           const synced = syncAchievements(
             nextFame,
             evaluateAchievements({
-              club: updated, players: rawPlayers, league: nextLeague, national, fame: nextFame,
+              club: updated, players: rawPlayers, league, national, fame: nextFame,
               leaguePosition: position, matchesPlayed: matches.length + 1,
             })
           );

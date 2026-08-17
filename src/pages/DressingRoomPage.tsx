@@ -14,7 +14,7 @@ import {
   buildPressConference, chatAvailable, chatSuccessChance, CHAT_META, pressAvailable,
   previewTalks, TALK_META, type ChatKind, type PressQuestion, type TalkPreview,
 } from "@/game/dressingroom";
-import { clubOf, nextFixture, sortedTable } from "@/game/league";
+import { nextWorldFixture, worldMember, worldStandings } from "@/game/multiplayer";
 import { resolveLineup } from "@/game/match";
 import { squadStrength } from "@/game/players";
 import { navigate } from "@/lib/router";
@@ -28,7 +28,7 @@ const TABS = [
 
 export default function DressingRoomPage() {
   const {
-    club, players, league, staffEffects, dressingRoom, chemistry, concerns,
+    club, players, world, staffEffects, dressingRoom, chemistry, concerns,
     talkTo, giveTeamTalk, doPressConference,
   } = useGame();
 
@@ -40,18 +40,18 @@ export default function DressingRoomPage() {
   const [pressResult, setPressResult] = useState<string[] | null>(null);
 
   const position = useMemo(
-    () => (league && club ? sortedTable(league).findIndex((r) => r.clubId === club.id) + 1 : 0),
-    [league, club]
+    () => (world && club ? worldStandings(world).findIndex((r) => r.clubId === club.id) + 1 : 0),
+    [world, club]
   );
 
   const context = useMemo(() => {
-    if (!league || !club) return null;
-    const fx = nextFixture(league);
+    if (!world || !club) return null;
+    const fx = nextWorldFixture(world, club.id);
     if (!fx) return null;
-    const rival = clubOf(league, fx.homeId === club.id ? fx.awayId : fx.homeId);
+    const rival = worldMember(world, fx.homeId === club.id ? fx.awayId : fx.homeId);
     const { starters } = resolveLineup(club.tactics, players);
     return { fx, rival, starters, isHome: fx.homeId === club.id };
-  }, [league, club, players]);
+  }, [world, club, players]);
 
   const talks = useMemo(() => {
     if (!context || !club) return [];
@@ -65,8 +65,8 @@ export default function DressingRoomPage() {
   }, [context, club, players, staffEffects]);
 
   const questions = useMemo<PressQuestion[]>(
-    () => (club ? buildPressConference(club, players, position, league?.clubs.length ?? 12) : []),
-    [club, players, position, league]
+    () => (club ? buildPressConference(club, players, position, world?.members.length ?? 12) : []),
+    [club, players, position, world]
   );
 
   if (!club || !dressingRoom) {

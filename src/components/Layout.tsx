@@ -5,7 +5,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   Bell, Briefcase, CalendarDays, ChevronRight, ClipboardList, Coins, Dumbbell, Gavel, GraduationCap,
-  Flag, Globe2, LayoutDashboard, LogOut, Menu, Newspaper, Settings, ShieldCheck, ShieldHalf, ShoppingCart,
+  Flag, LayoutDashboard, LogOut, Menu, Newspaper, Settings, ShieldCheck, ShieldHalf, ShoppingCart,
   Sparkles, Star,
   MessagesSquare, Radar, Radio, RefreshCw, Trophy, User, Users, WifiOff, X,
 } from "lucide-react";
@@ -37,7 +37,6 @@ const NAV: NavItem[] = [
   { to: "/club", label: "Club", icon: <ShieldHalf size={18} /> },
   { to: "/finanzas", label: "Economía", icon: <Coins size={18} /> },
   { to: "/noticias", label: "Noticias", icon: <Newspaper size={18} /> },
-  { to: "/multijugador", label: "Multijugador", icon: <Globe2 size={18} /> },
   { to: "/fama", label: "Fama y legado", icon: <Star size={18} /> },
   { to: "/rankings", label: "Rankings", icon: <Trophy size={18} /> },
   { to: "/mercado", label: "Mercado", icon: <ShoppingCart size={18} />, mobile: true },

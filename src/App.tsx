@@ -30,7 +30,6 @@ import NationalPage from "@/pages/NationalPage";
 import FamePage from "@/pages/FamePage";
 import SystemPage from "@/pages/SystemPage";
 import CupsPage from "@/pages/CupsPage";
-import MultiplayerPage from "@/pages/MultiplayerPage";
 import ProfilePage from "@/pages/ProfilePage";
 import ScoutingPage from "@/pages/ScoutingPage";
 import DressingRoomPage from "@/pages/DressingRoomPage";
@@ -103,7 +102,7 @@ function Router() {
     case "fama": page = <FamePage />; break;
     case "sistema": page = <SystemPage />; break;
     case "copas": page = <CupsPage />; break;
-    case "multijugador": page = <MultiplayerPage />; break;
+    case "multijugador": page = <LeaguePage />; break;
     case "perfil": page = <ProfilePage />; break;
     case "scouting": page = <ScoutingPage />; break;
     case "vestuario": page = <DressingRoomPage />; break;

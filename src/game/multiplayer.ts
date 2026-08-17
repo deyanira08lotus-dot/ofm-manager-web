@@ -312,6 +312,40 @@ export interface WorldPlayResult {
   vsHuman: boolean;
 }
 
+export function commitWorldLiveResult(params: {
+  league: WorldLeague;
+  fixtureId: string;
+  match: MatchResult;
+}): WorldLeague {
+  const league: WorldLeague = JSON.parse(JSON.stringify(params.league));
+  const fixture = league.fixtures.find((f) => f.id === params.fixtureId);
+  if (!fixture || fixture.played) return params.league;
+
+  fixture.played = true;
+  fixture.homeGoals = params.match.home.goals;
+  fixture.awayGoals = params.match.away.goals;
+  applyToTable(league, fixture.homeId, fixture.awayId, params.match.home.goals, params.match.away.goals);
+
+  league.fixtures
+    .filter((f) => f.round === fixture.round && !f.played)
+    .forEach((f) => {
+      const home = worldMember(league, f.homeId);
+      const away = worldMember(league, f.awayId);
+      if (!home || !away) return;
+      const [homeGoals, awayGoals] = quickSim(home.rating, away.rating, `${league.id}:${f.id}`);
+      f.played = true;
+      f.homeGoals = homeGoals;
+      f.awayGoals = awayGoals;
+      applyToTable(league, f.homeId, f.awayId, homeGoals, awayGoals);
+    });
+
+  const roundPending = league.fixtures.some((f) => f.round === fixture.round && !f.played);
+  if (!roundPending) league.round = fixture.round + 1;
+  if (!league.fixtures.some((f) => !f.played)) league.status = "finalizada";
+  league.updatedAt = Date.now();
+  return league;
+}
+
 /**
  * Disputa la jornada del usuario. El partido propio se simula en detalle;
  * el resto de la jornada con simulación rápida determinista, de modo que
