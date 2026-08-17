@@ -155,6 +155,9 @@ export function MatchPitch({ state }: { state: LiveMatchState }) {
         <div className="fm-pitch-jitter flex items-center justify-center rounded-full text-[8px] font-black shadow-md" style={dotStyle}>
           {isGk ? "P" : ""}
         </div>
+        <span className="mt-0.5 rounded bg-black/45 px-1 text-[7px] font-semibold leading-none text-white/90">
+          {p.s.player.position}
+        </span>
       </div>
     );
   };

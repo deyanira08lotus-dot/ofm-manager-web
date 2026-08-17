@@ -146,6 +146,11 @@ export default function LineupPage() {
                     style={p ? { background: `linear-gradient(135deg, ${club.colors.primary}, ${club.colors.secondary})` } : undefined}>
                     {p ? Math.round(p.overall) : slot.replace(/\d/, "")}
                   </div>
+                  {p && (
+                    <span className="mt-0.5 rounded bg-[rgba(6,42,28,0.72)] px-1 text-[9px] font-bold leading-tight text-[#fff]">
+                      {POSITION_MAP[p.position].short}
+                    </span>
+                  )}
                   <div className="mt-1 w-20 -translate-x-1/2 text-center" style={{ marginLeft: "50%" }}>
                     <p className="truncate rounded bg-[rgba(6,42,28,0.72)] px-1 text-[10px] font-medium text-[#fff]">
                       {p ? p.name.split(" ").slice(-1)[0] : slot}

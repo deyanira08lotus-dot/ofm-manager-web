@@ -2,7 +2,7 @@
  * src/components/Layout.tsx
  * Shell responsive: sidebar en PC / menú inferior en móvil + topbar con datos del club.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Bell, Briefcase, CalendarDays, ChevronRight, ClipboardList, Coins, Dumbbell, Gavel, GraduationCap,
   Flag, Globe2, LayoutDashboard, LogOut, Menu, Newspaper, Settings, ShieldCheck, ShieldHalf, ShoppingCart,
@@ -66,6 +66,25 @@ function NavLink({ item, active, onClick }: { item: NavItem; active: boolean; on
       {item.soon && <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-bold text-white/40">{item.soon}</span>}
       {active && !item.soon && <ChevronRight size={14} className="text-turf-400/60" />}
     </button>
+  );
+}
+
+function ChileClock() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 15_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return (
+    <span className="whitespace-nowrap tabular-nums">
+      Chile · {new Intl.DateTimeFormat("es-CL", {
+        timeZone: "America/Santiago",
+        dateStyle: "short",
+        timeStyle: "short",
+      }).format(now)}
+    </span>
   );
 }
 
@@ -157,6 +176,9 @@ export function Layout({ children }: { children: ReactNode }) {
                 <span className="text-sm font-semibold tabular-nums">{money(club.finances.balance)}</span>
               </div>
             )}
+            <div className="hidden rounded-xl border border-white/8 bg-ink-850 px-3 py-1.5 text-[11px] text-white/55 sm:block">
+              <ChileClock />
+            </div>
             <button className="relative rounded-lg p-2 text-white/60 hover:bg-white/5" onClick={() => navigate("/noticias")}>
               <Bell size={18} />
               {unread + notifications.filter((n) => n.urgency === "alta").length > 0 && (
@@ -170,6 +192,8 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-2 overflow-x-auto border-t border-white/5 px-3 py-1.5 text-[11px] text-white/45 sm:hidden">
               <Coins size={12} className="text-amber-300" />
               <span className="font-semibold text-white/70">{money(club.finances.balance)}</span>
+              <span>·</span>
+              <ChileClock />
               <span>·</span>
               <span>Rep. {club.reputation}</span>
               <span>·</span>
