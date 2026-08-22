@@ -12,8 +12,8 @@ import type { Club, NewsItem, Player, StaffMember, Tactics, UserProfile } from "
 import { backend, type AuthUser, type RankingRow } from "@/services/backend";
 import type { CreateClubInput } from "@/game/club";
 import {
-  buildAiTeam, buildUserTeam, clubOf, createLeague, mergePlayers,
-  nextFixture, playFriendly as simFriendly, playNextRound, recoverConditions, sortedTable,
+  buildAiTeam, buildUserTeam, createLeague, mergePlayers,
+  playFriendly as simFriendly, playNextRound, recoverConditions, sortedTable,
   type LeagueState,
 } from "@/game/league";
 import {
@@ -33,8 +33,8 @@ import {
   type BidInput, type BidResult, type MarketState,
 } from "@/game/market";
 import {
-  closeDraft as ytCloseDraft, createAcademy, createDraft, makeDraftPick, promoteCandidate,
-  refreshAcademy, refreshDraft, setAcademyPrefs as ytSetPrefs, undoDraftPick,
+  createAcademy, makeDraftPick, promoteCandidate,
+  refreshAcademy, setAcademyPrefs as ytSetPrefs, undoDraftPick,
   type AcademyPrefs, type AcademyState, type DraftState,
 } from "@/game/youth";
 import { draftPeriod, createWorldDraft, closeWorldDraft, claimDraftSignings, type DraftMemberSlot } from "@/game/youth";
