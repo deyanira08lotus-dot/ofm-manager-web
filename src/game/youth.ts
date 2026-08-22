@@ -334,20 +334,22 @@ export interface DraftProspect {
   takenBy: string | null;
 }
 
+export interface DraftMemberSlot {
+  clubId: string;
+  clubName: string;
+  managerName?: string;
+  isAi: boolean;
+  uid?: string | null;
+}
+
 export interface DraftState {
   id: string;
-  ownerUid: string;
-  clubId: string;
-  periodIndex: number;
-  /** "abierto" mientras se puede elegir; "cerrado" tras la revelación */
-  phase: "abierto" | "cerrado";
   country: string;
-  /** Orden de elección sorteado: nombres de clubes (el tuyo incluido) */
-  order: { clubId: string; clubName: string; isUser: boolean }[];
-  userPickPosition: number;
+  periodIndex: number;
+  phase: "abierto" | "cerrado";
+  order: DraftMemberSlot[];
   prospects: DraftProspect[];
-  /** IDs elegidos por el usuario (máx. 2) */
-  userPicks: string[];
+  picks: Record<string, string[]>;
   closesAt: string;
   updatedAt: number;
 }
@@ -378,12 +380,12 @@ function classOfProspect(rng: Rng): PlayerClass {
 }
 
 export function generateDraftClass(params: {
-  club: Club;
+  country: string;
   period: number;
+  analyticsLevel?: number;
 }): DraftProspect[] {
-  const { club, period } = params;
-  const analyticsLevel = club.facilities.analytics?.level ?? 1;
-  const rng = new Rng(`draft:${club.country}:${period}`);
+  const { country, period, analyticsLevel = 2 } = params;
+  const rng = new Rng(`draft:${country}:${period}`);
   const out: DraftProspect[] = [];
 
   for (let i = 0; i < DRAFT_PROSPECTS; i++) {
@@ -395,8 +397,8 @@ export function generateDraftClass(params: {
     // Nivel actual bajo (tienen 15-16 años); lo importante es el potencial
     const quality = Math.max(18, Math.min(52, 20 + targetPotential * 0.24 + rng.gauss(0, 4, -8, 9)));
     const player = generatePlayer({
-      seed: `dr_${club.country}_${period}_${i}`,
-      leagueCountry: club.country,
+      seed: `dr_${country}_${period}_${i}`,
+      leagueCountry: country,
       forceLocal: true, // Solo jugadores del país de la liga
       position,
       quality,
@@ -434,44 +436,59 @@ export function generateDraftClass(params: {
   return rng.shuffle(out);
 }
 
-/** Sorteo del orden de elección (loteria ponderada inversa a la reputación) */
-function drawOrder(club: Club, period: number) {
-  const rng = new Rng(`draftorder:${club.id}:${period}`);
+/** Sorteo determinista del orden de elección para los miembros recibidos. */
+export function drawOrder(id: string, members: DraftMemberSlot[]): DraftMemberSlot[] {
+  return new Rng(`draftorder:${id}`).shuffle(members.map((member) => ({ ...member })));
+}
+
+export function createWorldDraft(params: {
+  id: string;
+  country: string;
+  period: number;
+  members: DraftMemberSlot[];
+  analyticsLevel?: number;
+}): DraftState {
+  const order = drawOrder(params.id, params.members);
+  return {
+    id: params.id,
+    country: params.country,
+    periodIndex: params.period,
+    phase: "abierto",
+    order,
+    prospects: generateDraftClass({
+      country: params.country,
+      period: params.period,
+      analyticsLevel: params.analyticsLevel,
+    }),
+    picks: Object.fromEntries(params.members.map((member) => [member.clubId, []])),
+    closesAt: new Date((params.period + 1) * DRAFT_PERIOD_DAYS * 86400000).toISOString(),
+    updatedAt: Date.now(),
+  };
+}
+
+/** Compatibilidad con el flujo local existente: crea una sala con clubes IA. */
+export function createDraft(club: Club): DraftState {
   const aiNames = [
     "Atlético Valmar", "Real Aurora", "Sporting Ribalta", "Unión Peñalba",
     "Racing Verdal", "Deportivo Bahía", "Club Oriente", "FC Castilar",
     "Olímpico Nordeste", "Nacional Alborada", "Provincial Trelles",
   ];
-  const entries = [
-    { clubId: club.id, clubName: club.name, isUser: true },
-    ...aiNames.map((n, i) => ({ clubId: `ai_draft_${i}`, clubName: n, isUser: false })),
+  const members: DraftMemberSlot[] = [
+    { clubId: club.id, clubName: club.name, managerName: club.managerName, isAi: false, uid: club.ownerUid },
+    ...aiNames.map((clubName, i) => ({ clubId: `ai_draft_${i}`, clubName, isAi: true })),
   ];
-  return rng.shuffle(entries);
-}
-
-export function createDraft(club: Club): DraftState {
-  const period = draftPeriod();
-  const order = drawOrder(club, period);
-  return {
+  return createWorldDraft({
     id: club.id,
-    ownerUid: club.ownerUid,
-    clubId: club.id,
-    periodIndex: period,
-    phase: "abierto",
     country: club.country,
-    order,
-    userPickPosition: order.findIndex((o) => o.isUser) + 1,
-    prospects: generateDraftClass({ club, period }),
-    userPicks: [],
-    closesAt: draftNextDate(),
-    updatedAt: Date.now(),
-  };
+    period: draftPeriod(),
+    members,
+    analyticsLevel: club.facilities.analytics?.level ?? 2,
+  });
 }
 
 export function refreshDraft(state: DraftState, club: Club): DraftState {
   const period = draftPeriod();
   if (state.periodIndex === period) return state;
-  // Nuevo draft: el anterior queda cerrado y se genera la nueva clase
   return createDraft(club);
 }
 
@@ -480,114 +497,118 @@ export interface DraftPickResult {
   error?: string;
 }
 
-/** El usuario reserva un candidato (los datos siguen ocultos) */
-export function makeDraftPick(draft: DraftState, prospectId: string): DraftPickResult {
+/** Un club reserva un candidato (los datos siguen ocultos). */
+export function makeDraftPick(draft: DraftState, clubId: string, prospectId: string): DraftPickResult {
   if (draft.phase !== "abierto") return { draft, error: "El draft ya está cerrado." };
-  if (draft.userPicks.length >= DRAFT_PICKS_PER_USER) {
+  if (!draft.order.some((member) => member.clubId === clubId)) return { draft, error: "Club no participante." };
+  const currentPicks = draft.picks[clubId] ?? [];
+  if (currentPicks.length >= DRAFT_PICKS_PER_USER) {
     return { draft, error: `Solo puedes seleccionar ${DRAFT_PICKS_PER_USER} candidatos.` };
   }
   const prospect = draft.prospects.find((p) => p.id === prospectId);
   if (!prospect) return { draft, error: "Candidato no encontrado." };
   if (prospect.takenBy) return { draft, error: "Ese candidato ya ha sido elegido." };
 
+  const picks = { ...draft.picks, [clubId]: [...currentPicks, prospectId] };
   return {
     draft: {
       ...draft,
-      userPicks: [...draft.userPicks, prospectId],
-      prospects: draft.prospects.map((p) => (p.id === prospectId ? { ...p, takenBy: "user" } : p)),
+      picks,
+      prospects: draft.prospects.map((p) => (p.id === prospectId ? { ...p, takenBy: clubId } : p)),
       updatedAt: Date.now(),
     },
   };
 }
 
-export function undoDraftPick(draft: DraftState, prospectId: string): DraftState {
+export function undoDraftPick(draft: DraftState, clubId: string, prospectId: string): DraftState {
   if (draft.phase !== "abierto") return draft;
+  const currentPicks = draft.picks[clubId] ?? [];
+  if (!currentPicks.includes(prospectId)) return draft;
+  const picks = { ...draft.picks, [clubId]: currentPicks.filter((id) => id !== prospectId) };
   return {
     ...draft,
-    userPicks: draft.userPicks.filter((id) => id !== prospectId),
-    prospects: draft.prospects.map((p) => (p.id === prospectId ? { ...p, takenBy: null } : p)),
+    picks,
+    prospects: draft.prospects.map((p) => (
+      p.id === prospectId && p.takenBy === clubId ? { ...p, takenBy: null } : p
+    )),
     updatedAt: Date.now(),
   };
 }
 
-export interface DraftCloseResult {
-  draft: DraftState;
-  signed: Player[];
-  club: Club;
-  lost: string[];
-}
-
 /**
- * Cierra el draft: la IA elige por orden de sorteo, se resuelven los conflictos
- * (si un club con turno anterior quería a tu candidato, lo pierdes) y se
- * revelan TODOS los datos reales.
+ * Cierra el draft: la IA elige por orden, pudiendo robar reservas de clubes
+ * que tienen un turno posterior. La resolución es determinista.
  */
-export function closeDraft(draft: DraftState, club: Club, squadSize: number, maxSquad: number): DraftCloseResult {
-  const rng = new Rng(`draftclose:${draft.clubId}:${draft.periodIndex}`);
+export function closeWorldDraft(draft: DraftState): DraftState {
+  if (draft.phase === "cerrado") return draft;
+  const rng = new Rng(`draftclose:${draft.id}`);
   const next: DraftState = JSON.parse(JSON.stringify(draft));
-  const lost: string[] = [];
-  const signed: Player[] = [];
-  const nextClub: Club = JSON.parse(JSON.stringify(club));
 
-  const available = next.prospects.filter((p) => !p.takenBy || p.takenBy === "user");
-  const userPickSet = new Set(next.userPicks);
+  const orderIndex = new Map(next.order.map((member, index) => [member.clubId, index]));
+  for (let index = 0; index < next.order.length; index++) {
+    const slot = next.order[index];
+    if (!slot.isAi) continue;
+    const selected = next.picks[slot.clubId] ?? [];
+    next.picks[slot.clubId] = selected;
 
-  // Las IA eligen por orden; las que van antes que el usuario pueden robarte
-  for (const team of next.order) {
-    if (team.isUser) continue;
-    const beforeUser = next.order.indexOf(team) < next.userPickPosition - 1;
-    for (let k = 0; k < DRAFT_PICKS_PER_USER; k++) {
-      const pool = available.filter((p) => !p.takenBy || (p.takenBy === "user" && beforeUser));
+    for (let pick = selected.length; pick < DRAFT_PICKS_PER_USER; pick++) {
+      const pool = next.prospects.filter((prospect) => {
+        if (!prospect.takenBy) return true;
+        const ownerIndex = orderIndex.get(prospect.takenBy);
+        return ownerIndex !== undefined && ownerIndex > index;
+      });
       if (!pool.length) break;
-      // La IA prioriza los informes altos, con ruido
+
       const choice = rng.weighted(
-        pool.map((p) => [p, Math.max(0.4, GRADES.indexOf(p.scoutGrade) + 1 + rng.float(0, 1.6))] as const)
+        pool.map((prospect) => [prospect, Math.max(1, GRADES.indexOf(prospect.scoutGrade) + 1)] as const)
       );
-      if (userPickSet.has(choice.id) && beforeUser) {
-        lost.push(choice.name);
-        userPickSet.delete(choice.id);
-        next.userPicks = next.userPicks.filter((id) => id !== choice.id);
+      const previousOwner = choice.takenBy;
+      if (previousOwner) {
+        next.picks[previousOwner] = (next.picks[previousOwner] ?? []).filter((id) => id !== choice.id);
       }
-      choice.takenBy = team.clubName;
-      const idx = available.indexOf(choice);
-      if (idx >= 0) available.splice(idx, 1);
+      choice.takenBy = slot.clubId;
+      next.picks[slot.clubId].push(choice.id);
     }
   }
 
-  // Revelar todo y fichar a los que conservas
-  const now = gameNow();
-  let size = squadSize;
-  for (const p of next.prospects) {
-    p.revealed = true;
-    if (userPickSet.has(p.id) && size < maxSquad) {
-      p.takenBy = club.name;
-      const player: Player = {
-        ...p.player,
-        clubId: club.id,
-        ownerUid: club.ownerUid,
-        status: "active",
-        morale: Math.min(99, p.player.morale + 10),
-        history: [
-          ...p.player.history,
-          { date: now.toISOString(), type: "draft", text: `Seleccionado por el ${club.name} en el draft juvenil (clase ${p.playerClass}).` },
-        ],
-      };
-      signed.push(player);
-      size++;
-    }
-  }
-
-  nextClub.squadSize = size;
-  nextClub.updatedAt = Date.now();
+  next.prospects.forEach((prospect) => { prospect.revealed = true; });
   next.phase = "cerrado";
   next.updatedAt = Date.now();
+  return next;
+}
 
-  return { draft: next, signed, club: nextClub, lost };
+export function claimDraftSignings(
+  draft: DraftState,
+  club: Club,
+  existingPlayerIds: Set<string>,
+  squadSize: number,
+  maxSquad: number
+): Player[] {
+  const now = gameNow();
+  const signed: Player[] = [];
+  let size = squadSize;
+  for (const prospect of draft.prospects) {
+    if (size >= maxSquad) break;
+    if (prospect.takenBy !== club.id || existingPlayerIds.has(prospect.player.id)) continue;
+    signed.push({
+      ...prospect.player,
+      clubId: club.id,
+      ownerUid: club.ownerUid,
+      status: "active",
+      morale: Math.min(99, prospect.player.morale + 10),
+      history: [
+        ...prospect.player.history,
+        { date: now.toISOString(), type: "draft", text: `Seleccionado por el ${club.name} en el draft juvenil (clase ${prospect.playerClass}).` },
+      ],
+    });
+    size++;
+  }
+  return signed;
 }
 
 /** ¿Se puede cerrar ya el draft? */
 export function draftCanClose(draft: DraftState): boolean {
-  return draft.phase === "abierto" && draft.userPicks.length > 0;
+  return draft.phase === "abierto" && gameNow().getTime() >= Date.parse(draft.closesAt);
 }
 
 export const CLASS_DESCRIPTION: Record<PlayerClass, string> = {

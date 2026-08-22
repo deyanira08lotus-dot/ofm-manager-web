@@ -273,7 +273,7 @@ export function buildNotifications(params: {
 
   /* Draft */
   if (draft && draft.phase === "abierto") {
-    const left = 2 - draft.userPicks.length;
+    const left = 2 - (draft.picks[club.id]?.length ?? 0);
     push({
       id: "draft_open",
       kind: "draft",

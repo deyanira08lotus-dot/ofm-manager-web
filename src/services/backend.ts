@@ -75,11 +75,11 @@ export interface Backend {
   addPlayer(player: Player): Promise<void>;
   savePlayer(player: Player): Promise<void>;
   removePlayer(playerId: string): Promise<void>;
-  /* --- FASES 5-6: academia y draft --- */
+  /* --- FASES 5-6: academia y draft (draft compartido con la Liga Mundial) --- */
   getAcademy(clubId: string): Promise<AcademyState | null>;
   saveAcademy(state: AcademyState): Promise<void>;
-  getDraft(clubId: string): Promise<DraftState | null>;
-  saveDraft(state: DraftState): Promise<void>;
+  getWorldDraft(draftId: string): Promise<DraftState | null>;
+  saveWorldDraft(state: DraftState): Promise<void>;
   /* --- FASE 7: cuerpo técnico --- */
   getStaffState(clubId: string): Promise<StaffState | null>;
   saveStaffState(state: StaffState): Promise<void>;
@@ -386,12 +386,12 @@ const localBackend: Backend = {
     all[state.clubId] = state;
     write(LS.academies, all);
   },
-  async getDraft(clubId) {
-    return read<Record<string, DraftState>>(LS.drafts, {})[clubId] ?? null;
+  async getWorldDraft(draftId) {
+    return read<Record<string, DraftState>>(LS.drafts, {})[draftId] ?? null;
   },
-  async saveDraft(state) {
+  async saveWorldDraft(state) {
     const all = read<Record<string, DraftState>>(LS.drafts, {});
-    all[state.clubId] = state;
+    all[state.id] = state;
     write(LS.drafts, all);
   },
 
@@ -774,14 +774,14 @@ const firebaseBackend: Backend = {
     const { doc, setDoc } = await import("firebase/firestore");
     await setDoc(doc(fb()!.db, "academies", state.clubId), state);
   },
-  async getDraft(clubId) {
+  async getWorldDraft(draftId) {
     const { doc, getDoc } = await import("firebase/firestore");
-    const snap = await getDoc(doc(fb()!.db, "drafts", clubId));
+    const snap = await getDoc(doc(fb()!.db, "worldDrafts", draftId));
     return snap.exists() ? (snap.data() as DraftState) : null;
   },
-  async saveDraft(state) {
+  async saveWorldDraft(state) {
     const { doc, setDoc } = await import("firebase/firestore");
-    await setDoc(doc(fb()!.db, "drafts", state.clubId), state);
+    await setDoc(doc(fb()!.db, "worldDrafts", state.id), state);
   },
 
   async getStaffState(clubId) {

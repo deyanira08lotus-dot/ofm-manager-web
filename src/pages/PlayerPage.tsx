@@ -131,6 +131,37 @@ export default function PlayerPage({ playerId }: { playerId: string }) {
         </div>
       </div>
 
+      {/* Acciones rápidas: primero lo interactivo, para no tener que bajar
+          toda la ficha (rendimiento, popularidad, atributos...) solo para
+          cambiar el rol o el foco de entrenamiento de un jugador. */}
+      <Card title="Entrenamiento individual" subtitle="Se aplica en el procesado diario del servidor">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Select
+            label="Atributo prioritario"
+            value={player.trainingFocus ?? ""}
+            disabled={saving}
+            onChange={(e) => saveTraining(e.target.value || null, player.squadRole)}
+          >
+            <option value="">General (equilibrado)</option>
+            {ATTRIBUTE_GROUPS.filter((g) => (player.position === "GK" ? true : g.key !== "goalkeeping")).flatMap((g) =>
+              g.attrs.map((k) => <option key={k} value={k}>{g.label} · {ATTRIBUTE_LABELS[k]}</option>)
+            )}
+          </Select>
+          <Select
+            label="Rol en la plantilla"
+            value={player.squadRole}
+            disabled={saving}
+            onChange={(e) => saveTraining(player.trainingFocus ?? null, e.target.value)}
+          >
+            {["Estrella", "Titular", "Rotación", "Suplente", "Promesa"].map((r) => <option key={r}>{r}</option>)}
+          </Select>
+        </div>
+        <p className="mt-3 flex items-start gap-1.5 text-[11px] text-white/35">
+          <Dumbbell size={12} className="mt-0.5" /> El rol influye en la moral: un suplente con rol de estrella se
+          desmotivará.
+        </p>
+      </Card>
+
       <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
         <div className="space-y-5">
           <Card title="Perfil de rendimiento">
@@ -217,52 +248,22 @@ export default function PlayerPage({ playerId }: { playerId: string }) {
             </div>
           </Card>
 
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Card title="Entrenamiento individual" subtitle="Se aplica en el procesado diario del servidor">
-              <div className="space-y-3">
-                <Select
-                  label="Atributo prioritario"
-                  value={player.trainingFocus ?? ""}
-                  disabled={saving}
-                  onChange={(e) => saveTraining(e.target.value || null, player.squadRole)}
-                >
-                  <option value="">General (equilibrado)</option>
-                  {ATTRIBUTE_GROUPS.filter((g) => (player.position === "GK" ? true : g.key !== "goalkeeping")).flatMap((g) =>
-                    g.attrs.map((k) => <option key={k} value={k}>{g.label} · {ATTRIBUTE_LABELS[k]}</option>)
-                  )}
-                </Select>
-                <Select
-                  label="Rol en la plantilla"
-                  value={player.squadRole}
-                  disabled={saving}
-                  onChange={(e) => saveTraining(player.trainingFocus ?? null, e.target.value)}
-                >
-                  {["Estrella", "Titular", "Rotación", "Suplente", "Promesa"].map((r) => <option key={r}>{r}</option>)}
-                </Select>
-                <p className="flex items-start gap-1.5 text-[11px] text-white/35">
-                  <Dumbbell size={12} className="mt-0.5" /> El rol influye en la moral: un suplente con rol de estrella se
-                  desmotivará.
-                </p>
-              </div>
-            </Card>
-
-            <Card title="Contrato y ficha">
-              <dl className="space-y-2 text-sm">
-                {[
-                  ["Firmado el", formatGameDate(player.contract.signedOn), <CalendarClock key="a" size={13} />],
-                  ["Vence", formatGameDate(player.contract.expires), <CalendarClock key="b" size={13} />],
-                  ["Prima por gol", money(player.contract.bonusPerGoal), <Target key="c" size={13} />],
-                  ["Nacionalidad", `${countryFlag(player.nationality)} ${countryName(player.nationality)}`, <Globe2 key="d" size={13} />],
-                  ["Estado físico", player.injury ? `${player.injury.name} (${player.injury.daysOut} d)` : "Disponible", <HeartPulse key="e" size={13} />],
-                ].map(([k, v, icon]) => (
-                  <div key={k as string} className="flex items-center justify-between border-b border-white/5 pb-1.5">
-                    <dt className="flex items-center gap-1.5 text-white/45">{icon}{k}</dt>
-                    <dd className="font-medium">{v}</dd>
-                  </div>
-                ))}
-              </dl>
-            </Card>
-          </div>
+          <Card title="Contrato y ficha">
+            <dl className="space-y-2 text-sm">
+              {[
+                ["Firmado el", formatGameDate(player.contract.signedOn), <CalendarClock key="a" size={13} />],
+                ["Vence", formatGameDate(player.contract.expires), <CalendarClock key="b" size={13} />],
+                ["Prima por gol", money(player.contract.bonusPerGoal), <Target key="c" size={13} />],
+                ["Nacionalidad", `${countryFlag(player.nationality)} ${countryName(player.nationality)}`, <Globe2 key="d" size={13} />],
+                ["Estado físico", player.injury ? `${player.injury.name} (${player.injury.daysOut} d)` : "Disponible", <HeartPulse key="e" size={13} />],
+              ].map(([k, v, icon]) => (
+                <div key={k as string} className="flex items-center justify-between border-b border-white/5 pb-1.5">
+                  <dt className="flex items-center gap-1.5 text-white/45">{icon}{k}</dt>
+                  <dd className="font-medium">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </Card>
 
           <div className="grid gap-5 sm:grid-cols-2">
             <Card title="Estadísticas de carrera">

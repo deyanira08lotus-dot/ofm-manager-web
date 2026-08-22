@@ -37,6 +37,7 @@ import {
   refreshAcademy, refreshDraft, setAcademyPrefs as ytSetPrefs, undoDraftPick,
   type AcademyPrefs, type AcademyState, type DraftState,
 } from "@/game/youth";
+import { draftPeriod, createWorldDraft, closeWorldDraft, claimDraftSignings, type DraftMemberSlot } from "@/game/youth";
 import {
   computeStaffEffects, createStaffState, enrollCourse, fireStaff, hireStaff, refreshStaffState,
   renewStaff, type StaffEffects, type StaffState,
@@ -317,10 +318,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         backend.saveAcademy(ac).catch(() => {});
 
         /* FASE 6 — draft: clase nueva cada 2 meses de juego */
-        let dr = await backend.getDraft(c.id);
-        dr = dr ? refreshDraft(dr, c) : createDraft(c);
-        setDraft(dr);
-        backend.saveDraft(dr).catch(() => {});
+        
 
         /* FASE 7 — cuerpo técnico: mercado y cursos de formación */
         let sm = await backend.getStaffState(c.id);
@@ -425,6 +423,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
           }
         }
         setWorld(wl);
+
+      /* Draft compartido de la Liga Mundial */
+      let dr = await backend.getWorldDraft(wid);
+      const draftPeriodIdx = draftPeriod();
+      if (!dr || dr.periodIndex !== draftPeriodIdx) {
+        const members: DraftMemberSlot[] = wl.members.map((m) => ({
+          clubId: m.id, clubName: m.name, managerName: m.managerName, isAi: m.isAi, uid: m.ownerUid,
+        }));
+        dr = createWorldDraft({ id: wid, country: c.country, period: draftPeriodIdx, members, analyticsLevel: c.facilities.analytics?.level ?? 2 });
+        await backend.saveWorldDraft(dr).catch(() => {});
+      }
+      setDraft(dr);
 
         const [inc, out] = await Promise.all([
           backend.getOffersFor(u.uid).catch(() => []),
@@ -947,47 +957,43 @@ export function GameProvider({ children }: { children: ReactNode }) {
       },
 
       async pickProspect(prospectId) {
-        if (!draft) return "Draft no disponible";
-        const res = makeDraftPick(draft, prospectId);
+        if (!draft || !club) return "Draft no disponible";
+        const res = makeDraftPick(draft, club.id, prospectId);
         if (res.error) return res.error;
         setDraft(res.draft);
-        await backend.saveDraft(res.draft).catch(() => {});
+        await backend.saveWorldDraft(res.draft).catch(() => {});
         return null;
       },
 
       async unpickProspect(prospectId) {
-        if (!draft) return;
-        const next = undoDraftPick(draft, prospectId);
+        if (!draft || !club) return;
+        const next = undoDraftPick(draft, club.id, prospectId);
         setDraft(next);
-        await backend.saveDraft(next).catch(() => {});
+        await backend.saveWorldDraft(next).catch(() => {});
       },
 
       async finishDraft() {
         if (!club || !draft) return null;
-        const res = ytCloseDraft(draft, club, rawPlayers.length, SQUAD_MAX);
-        setDraft(res.draft);
-        setClub(res.club);
-        if (res.signed.length) {
-          setRawPlayers((prev) => [...prev, ...res.signed].sort((a, b) => b.overall - a.overall));
-          await Promise.all(res.signed.map((p) => backend.addPlayer(p)));
+        const closed = closeWorldDraft(draft);
+        setDraft(closed);
+        await backend.saveWorldDraft(closed).catch(() => {});
+        const existingIds = new Set(rawPlayers.map((p) => p.id));
+        const signed = claimDraftSignings(closed, club, existingIds, rawPlayers.length, SQUAD_MAX);
+        if (signed.length) {
+          setRawPlayers((prev) => [...prev, ...signed].sort((a, b) => b.overall - a.overall));
+          await Promise.all(signed.map((p) => backend.addPlayer(p)));
         }
-        await Promise.all([backend.saveClub(res.club), backend.saveDraft(res.draft)]);
-
-        const best = [...res.signed].sort((a, b) => b.potential - a.potential)[0];
+        await backend.saveClub(club).catch(() => {});
+        const best = [...signed].sort((a, b) => b.potential - a.potential)[0];
         const item: NewsItem = {
           id: uid("news"), clubId: club.id, date: gameNow().toISOString(), category: "draft",
-          title: res.signed.length
-            ? `Draft cerrado: ${res.signed.length} promesa(s) para la cantera`
-            : "Draft cerrado sin incorporaciones",
-          body: res.signed.length
-            ? `Se han revelado los datos reales. Destaca ${best.name} (${best.age} años, ${best.position}) con potencial clase ${best.potentialClass}.` +
-              (res.lost.length ? ` Perdimos a ${res.lost.join(", ")} ante clubes con turno anterior.` : "")
-            : `Los clubes con turno anterior se llevaron a nuestros objetivos${res.lost.length ? `: ${res.lost.join(", ")}` : ""}.`,
-          read: false, important: res.signed.length > 0,
+          title: signed.length ? `Draft cerrado: ${signed.length} promesa(s) para la cantera` : "Draft cerrado sin incorporaciones",
+          body: signed.length ? `Se han revelado los datos reales. Destaca ${best.name} (${best.age} años, ${best.position}) con potencial clase ${best.potentialClass}.` : "No se te asignó ningún jugador en este draft.",
+          read: false, important: signed.length > 0,
         };
         setNews((prev) => [item, ...prev]);
         backend.addNews(club.id, item).catch(() => {});
-        return { signed: res.signed.length, lost: res.lost };
+        return { signed: signed.length, lost: [] as string[] };
       },
 
       /* ------------------------- FASE 7 ------------------------- */
