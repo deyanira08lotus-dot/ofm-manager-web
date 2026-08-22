@@ -60,7 +60,10 @@ export default function DraftPage() {
     } finally { setBusy(false); }
   }
 
-  const picksLeft = DRAFT_PICKS_PER_USER - draft.userPicks.length;
+  const myPicks = draft.picks[club.id] ?? [];
+  const userPickPosition = draft.order.findIndex((o) => o.clubId === club.id) + 1;
+  const clubNameOf = (id: string | null | undefined) => draft.order.find((o) => o.clubId === id)?.clubName ?? "nadie";
+  const picksLeft = DRAFT_PICKS_PER_USER - myPicks.length;
 
   return (
     <div className="space-y-5">
@@ -77,9 +80,9 @@ export default function DraftPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Estado" value={revealed ? "Cerrado" : "Abierto"} sub={revealed ? "Datos revelados" : "Datos ocultos"}
                   icon={revealed ? <Eye size={15} /> : <EyeOff size={15} />} tone={revealed ? "default" : "good"} />
-        <StatTile label="Tu turno" value={`${draft.userPickPosition}º`} sub={`de ${draft.order.length} clubes`} icon={<Users size={15} />}
-                  tone={draft.userPickPosition <= 3 ? "good" : draft.userPickPosition >= 9 ? "bad" : "warn"} />
-        <StatTile label="Selecciones" value={`${draft.userPicks.length} / ${DRAFT_PICKS_PER_USER}`} sub={picksLeft ? `${picksLeft} disponible(s)` : "Completo"} />
+        <StatTile label="Tu turno" value={`${userPickPosition}º`} sub={`de ${draft.order.length} clubes`} icon={<Users size={15} />}
+                  tone={userPickPosition <= 3 ? "good" : userPickPosition >= 9 ? "bad" : "warn"} />
+        <StatTile label="Selecciones" value={`${myPicks.length} / ${DRAFT_PICKS_PER_USER}`} sub={picksLeft ? `${picksLeft} disponible(s)` : "Completo"} />
         <StatTile label="Próximo draft" value={`${daysUntil(nextDraft)} días`} sub={`En ${realTimeUntil(nextDraft)} reales`} icon={<CalendarClock size={15} />} />
       </div>
 
@@ -95,7 +98,7 @@ export default function DraftPage() {
           {draft.order.map((o, i) => (
             <div key={o.clubId}
                  className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-xs ${
-                   o.isUser ? "border-turf-500/50 bg-turf-500/12 font-bold text-turf-300" : "border-white/8 bg-ink-900/50 text-white/50"}`}>
+                   o.clubId === club.id ? "border-turf-500/50 bg-turf-500/12 font-bold text-turf-300" : "border-white/8 bg-ink-900/50 text-white/50"}`}>
               <span className="font-black opacity-50">{i + 1}</span>
               <span className="whitespace-nowrap">{o.clubName}</span>
             </div>
@@ -127,9 +130,9 @@ export default function DraftPage() {
       {/* Candidatos */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {sorted.map((pr) => {
-          const mine = draft.userPicks.includes(pr.id);
-          const taken = pr.takenBy && pr.takenBy !== "user" && pr.takenBy !== club.name;
-          const gotIt = revealed && pr.takenBy === club.name;
+          const mine = myPicks.includes(pr.id);
+          const taken = pr.takenBy != null && pr.takenBy !== club.id;
+          const gotIt = revealed && pr.takenBy === club.id;
           return (
             <Card key={pr.id}
                   className={
@@ -211,7 +214,7 @@ export default function DraftPage() {
                   </div>
                   <p className={`mt-3 rounded-lg px-3 py-2 text-center text-xs font-semibold ${
                     gotIt ? "bg-turf-500/15 text-turf-300" : "bg-white/5 text-white/45"}`}>
-                    {gotIt ? "✓ Fichado por tu club" : `Elegido por ${pr.takenBy ?? "nadie"}`}
+                    {gotIt ? "✓ Fichado por tu club" : `Elegido por ${clubNameOf(pr.takenBy)}`}
                   </p>
                 </>
               )}
