@@ -137,6 +137,7 @@ export default function LineupPage() {
               return (
                 <button
                   key={slot}
+                    onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setPicking(slot)}
                   className="absolute -translate-x-1/2 -translate-y-1/2 transition active:scale-95"
                   style={{ left: `${pos[0]}%`, top: `${pos[1]}%` }}
