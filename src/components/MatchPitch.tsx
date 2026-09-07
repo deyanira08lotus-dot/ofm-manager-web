@@ -1,9 +1,9 @@
 /**
  * src/components/MatchPitch.tsx
- * Cancha con balón estilo pelota real, jugadores tipo "camiseta" con color
- * del equipo, y sonido de gol sintetizado (sin archivos de audio externos).
- * Sigue sin cambiar el motor de simulación: sólo interpreta mejor los
- * eventos que ya genera `livematch.ts`.
+ * Cancha con secuencia de pases visual antes del remate (el balón pasa
+ * entre 2-3 atacantes antes de llegar al arco), balón más grande con
+ * apariencia de pelota real y giro sutil, camisetas con color del equipo,
+ * y sonido de gol sintetizado. No cambia el motor de simulación.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
@@ -21,6 +21,7 @@ const LANE: Record<string, number> = {
   GK: 0.5, CB: 0.5, LB: 0.06, RB: 0.94, DM: 0.5, CM: 0.5, AM: 0.5, LW: 0.06, RW: 0.94, ST: 0.5,
 };
 const ATTACK_POS = new Set(["ST", "LW", "RW", "AM"]);
+const MID_POS = new Set(["CM", "DM", "AM"]);
 
 interface PitchPoint {
   id: string;
@@ -51,22 +52,21 @@ function layout(state: LiveMatchState, side: Side): PitchPoint[] {
   return points;
 }
 
-type BallState = { x: number; y: number; mode: "idle" | "goal" | "save" | "miss" };
+type BallState = { x: number; y: number; mode: "idle" | "pass" | "goal" | "save" | "miss" };
 
 type AnimStep =
   | { kind: "surge"; side: Side; ids: string[]; advance: number; duration: number }
+  | { kind: "pass"; x: number; y: number; duration: number }
   | { kind: "shot"; side: Side; outcome: "goal" | "save" | "miss"; duration: number }
   | { kind: "settle"; duration: number }
   | { kind: "card"; playerId: string | null; cardType: "red" | "yellow"; duration: number };
 
-/** Sonido de gol sintetizado con Web Audio API (sin archivos externos). */
 function playGoalSound() {
   try {
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new Ctx();
     const now = ctx.currentTime;
-    // Pequeño arpegio ascendente "triunfal" + un golpe grave de fondo.
-    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+    const notes = [523.25, 659.25, 783.99, 1046.5];
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -136,12 +136,14 @@ function MatchPitchInner({ state, speed = "normal" }: { state: LiveMatchState; s
       return;
     }
     processingRef.current = true;
-    const dur = Math.max(150, step.duration * factor);
+    const dur = Math.max(120, step.duration * factor);
 
     if (step.kind === "surge") {
       const overrides: Record<string, number> = {};
       step.ids.forEach((id) => { overrides[id] = step.advance; });
-      setSurge(overrides);
+      setSurge((prev) => ({ ...prev, ...overrides }));
+    } else if (step.kind === "pass") {
+      setBall({ x: step.x, y: step.y, mode: "pass" });
     } else if (step.kind === "shot") {
       const towardsRight = step.side === "home";
       const goalX = towardsRight ? 96 : 4;
@@ -187,16 +189,31 @@ function MatchPitchInner({ state, speed = "normal" }: { state: LiveMatchState; s
       const attacking = latest.side === "home" || latest.side === "away" ? latest.side : null;
       if (!attacking) return;
       const pool = attacking === "home" ? homePts : awayPts;
-      const surgers = pool
-        .filter((p) => ATTACK_POS.has(p.s.player.position))
-        .slice(0, 3)
-        .map((p) => p.id);
+      const towardsRight = attacking === "home";
 
-      enqueue([
-        { kind: "surge", side: attacking, ids: surgers, advance: 10, duration: 750 },
-        { kind: "shot", side: attacking, outcome: latest.type, duration: latest.type === "miss" ? 550 : 700 },
-        { kind: "settle", duration: 550 },
-      ]);
+      // Armamos la jugada: 1 mediocampista que arranca + hasta 2 atacantes que reciben,
+      // ordenados de menos a más avanzados (para que el pase vaya hacia adelante).
+      const buildFrom = (set: Set<string>) =>
+        pool.filter((p) => set.has(p.s.player.position))
+          .sort((a, b) => (towardsRight ? a.x - b.x : b.x - a.x));
+
+      const mids = buildFrom(MID_POS).slice(0, 1);
+      const forwards = buildFrom(ATTACK_POS).slice(0, 2);
+      const carriers = [...mids, ...forwards];
+      const surgers = carriers.map((p) => p.id);
+
+      const steps: AnimStep[] = [
+        { kind: "surge", side: attacking, ids: surgers, advance: 10, duration: 500 },
+      ];
+      // Pase por cada jugador de la jugada, con la posición YA avanzada (x + advance).
+      carriers.forEach((p) => {
+        const advancedX = p.x + (towardsRight ? 10 : -10);
+        steps.push({ kind: "pass", x: advancedX, y: p.y, duration: 380 });
+      });
+      steps.push({ kind: "shot", side: attacking, outcome: latest.type, duration: latest.type === "miss" ? 500 : 650 });
+      steps.push({ kind: "settle", duration: 500 });
+
+      enqueue(steps);
       return;
     }
 
@@ -223,10 +240,10 @@ function MatchPitchInner({ state, speed = "normal" }: { state: LiveMatchState; s
     const advance = surge[p.id] ?? 0;
     const flip = side === "away";
     const effectiveX = p.x + (flip ? -advance : advance);
-    const size = isGk ? 15 : 13;
+    const size = isGk ? 16 : 14;
     const wrapStyle: CSSProperties & { "--dx"?: string; "--dy"?: string } = {
       left: `${effectiveX}%`, top: `${p.y}%`, transform: "translate(-50%, -50%)",
-      transition: `left ${0.7 * factor}s ease, top ${0.7 * factor}s ease`,
+      transition: `left ${0.55 * factor}s ease, top ${0.55 * factor}s ease`,
       "--dx": `${j.dx}px`, "--dy": `${j.dy}px`,
       animationDuration: `${j.dur}s`, animationDelay: `${j.delay}s`,
     };
@@ -237,14 +254,13 @@ function MatchPitchInner({ state, speed = "normal" }: { state: LiveMatchState; s
           style={{
             width: size, height: size * 1.05,
             background: primary,
-            /* Silueta simple de camiseta en vez de un círculo liso */
             clipPath: "polygon(30% 0%, 70% 0%, 100% 18%, 82% 30%, 82% 100%, 18% 100%, 18% 30%, 0% 18%)",
             border: isHi ? `2px solid ${highlight!.type === "red" ? "#ef4444" : "#f5c518"}` : `1px solid ${secondary}`,
             boxShadow: isHi ? `0 0 0 4px ${highlight!.type === "red" ? "rgba(239,68,68,0.35)" : "rgba(245,197,24,0.35)"}` : undefined,
           }}
         >
           <span
-            className="text-[6px] font-black leading-none"
+            className="text-[7px] font-black leading-none"
             style={{ color: secondary === primary ? "#fff" : secondary }}
           >
             {isGk ? "P" : ""}
@@ -257,30 +273,39 @@ function MatchPitchInner({ state, speed = "normal" }: { state: LiveMatchState; s
     );
   };
 
-  /** Balón estilo pelota de fútbol real (SVG con parches), no un punto liso. */
+  /** Balón grande con parches de pelota real y giro sutil mientras se mueve. */
   const Ball = () => (
     <div
       className="absolute"
       style={{
-        width: 8, height: 8,
+        width: 14, height: 14,
         left: `${ball.x}%`, top: `${ball.y}%`, transform: "translate(-50%, -50%)",
-        transition: `left ${0.55 * factor}s cubic-bezier(.3,.7,.4,1), top ${0.55 * factor}s cubic-bezier(.3,.7,.4,1)`,
+        transition: `left ${0.38 * factor}s cubic-bezier(.3,.6,.4,1), top ${0.38 * factor}s cubic-bezier(.3,.6,.4,1)`,
         opacity: ball.mode === "miss" ? 0 : 1,
-        filter: "drop-shadow(0 0 2px rgba(0,0,0,0.6))",
+        filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6))",
+        animation: ball.mode === "idle" ? undefined : "fm-ball-spin 0.5s linear infinite",
       }}
     >
-      <svg viewBox="0 0 32 32" width="8" height="8">
-        <circle cx="16" cy="16" r="15" fill="#f5f5f5" stroke="#1a1a1a" strokeWidth="1" />
-        <polygon points="16,7 21,11 19,17 13,17 11,11" fill="#1a1a1a" />
-        <polygon points="6,13 11,11 13,17 9,21 4,19" fill="#1a1a1a" opacity="0.9" />
-        <polygon points="26,13 21,11 19,17 23,21 28,19" fill="#1a1a1a" opacity="0.9" />
-        <polygon points="12,26 9,21 13,17 19,17 23,21 20,26" fill="none" stroke="#1a1a1a" strokeWidth="0.8" />
+      <svg viewBox="0 0 32 32" width="14" height="14">
+        <circle cx="16" cy="16" r="15" fill="#fafafa" stroke="#111" strokeWidth="1.2" />
+        <polygon points="16,6 21.5,10 19.5,17 12.5,17 10.5,10" fill="#111" />
+        <polygon points="5,12 10.5,10 12.5,17 8,21.5 3,19.5" fill="#111" opacity="0.92" />
+        <polygon points="27,12 21.5,10 19.5,17 24,21.5 29,19.5" fill="#111" opacity="0.92" />
+        <polygon points="12,27 8,21.5 12.5,17 19.5,17 24,21.5 20,27" fill="none" stroke="#111" strokeWidth="1" />
+        <circle cx="16" cy="16" r="15" fill="url(#fmBallShade)" />
+        <defs>
+          <radialGradient id="fmBallShade" cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stopColor="#fff" stopOpacity="0.35" />
+            <stop offset="60%" stopColor="#fff" stopOpacity="0" />
+          </radialGradient>
+        </defs>
       </svg>
     </div>
   );
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/10" style={{ aspectRatio: "100 / 64" }}>
+      <style>{`@keyframes fm-ball-spin { from { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)) hue-rotate(0deg); } to { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)) hue-rotate(0deg); } }`}</style>
       <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(90deg, #0f4a2c 0 8%, #124f30 8% 16%)" }} />
       <svg viewBox="0 0 100 64" className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
         <g stroke="rgba(255,255,255,0.55)" strokeWidth="0.4" fill="none">
