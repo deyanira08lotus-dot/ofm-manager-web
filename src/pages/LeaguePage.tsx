@@ -105,7 +105,7 @@ export default function LeaguePage() {
   }
 
   const rival = next ? worldMember(world, next.homeId === club.id ? next.awayId : next.homeId) : null;
-  const playable = next ? Date.parse(next.date) <= gameNow().getTime() : false;
+  const playable = true; // TEMP: bypass para testear MatchPitch, revertir después
   const myRow = standings.findIndex((r) => r.clubId === club.id) + 1;
   const selected = squad.find((p) => p.id === pick);
 

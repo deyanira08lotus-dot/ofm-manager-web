@@ -1429,7 +1429,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (!club || !world) return "Sin datos";
         const fx = nextWorldFixture(world, club.id);
         if (!fx) return "No hay partidos pendientes.";
-        if (Date.parse(fx.date) > gameNow().getTime()) return "Todavía no es la fecha del partido.";
+      // TEMP bypass testing: if (Date.parse(fx.date) > gameNow().getTime()) return "Todavía no es la fecha del partido.";
         const isHome = fx.homeId === club.id;
         const rival = worldMember(world, isHome ? fx.awayId : fx.homeId);
         if (!rival) return "Rival no encontrado.";

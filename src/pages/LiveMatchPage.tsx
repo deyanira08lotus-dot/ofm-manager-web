@@ -224,7 +224,7 @@ export default function LiveMatchPage() {
       </div>
 
       {/* Campo visual */}
-      <MatchPitch state={liveMatch} />
+      <MatchPitch state={liveMatch} speed={speed} />
 
       {msg && (
         <p className={`rounded-xl border px-4 py-2 text-sm ${msg.ok ? "border-turf-500/40 bg-turf-500/10 text-turf-300" : "border-rose-500/30 bg-rose-500/10 text-rose-300"}`}>
