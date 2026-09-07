@@ -1,9 +1,8 @@
 /**
  * src/components/MatchPitch.tsx
- * Cancha con secuencia de pases visual antes del remate (el balón pasa
- * entre 2-3 atacantes antes de llegar al arco), balón más grande con
- * apariencia de pelota real y giro sutil, camisetas con color del equipo,
- * y sonido de gol sintetizado. No cambia el motor de simulación.
+ * Cancha con secuencia de pases visual, balón como emoji real ⚽,
+ * camisetas con color del equipo, sonido de gol sintetizado.
+ * No cambia el motor de simulación.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
@@ -191,8 +190,6 @@ function MatchPitchInner({ state, speed = "normal" }: { state: LiveMatchState; s
       const pool = attacking === "home" ? homePts : awayPts;
       const towardsRight = attacking === "home";
 
-      // Armamos la jugada: 1 mediocampista que arranca + hasta 2 atacantes que reciben,
-      // ordenados de menos a más avanzados (para que el pase vaya hacia adelante).
       const buildFrom = (set: Set<string>) =>
         pool.filter((p) => set.has(p.s.player.position))
           .sort((a, b) => (towardsRight ? a.x - b.x : b.x - a.x));
@@ -205,7 +202,6 @@ function MatchPitchInner({ state, speed = "normal" }: { state: LiveMatchState; s
       const steps: AnimStep[] = [
         { kind: "surge", side: attacking, ids: surgers, advance: 10, duration: 500 },
       ];
-      // Pase por cada jugador de la jugada, con la posición YA avanzada (x + advance).
       carriers.forEach((p) => {
         const advancedX = p.x + (towardsRight ? 10 : -10);
         steps.push({ kind: "pass", x: advancedX, y: p.y, duration: 380 });
@@ -273,39 +269,26 @@ function MatchPitchInner({ state, speed = "normal" }: { state: LiveMatchState; s
     );
   };
 
-  /** Balón grande con parches de pelota real y giro sutil mientras se mueve. */
+  /** Balón: emoji real de pelota de fútbol, sin dibujo a mano. */
   const Ball = () => (
     <div
-      className="absolute"
+      className="absolute flex items-center justify-center"
       style={{
-        width: 14, height: 14,
+        width: 16, height: 16,
         left: `${ball.x}%`, top: `${ball.y}%`, transform: "translate(-50%, -50%)",
         transition: `left ${0.38 * factor}s cubic-bezier(.3,.6,.4,1), top ${0.38 * factor}s cubic-bezier(.3,.6,.4,1)`,
         opacity: ball.mode === "miss" ? 0 : 1,
+        fontSize: 14,
+        lineHeight: 1,
         filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6))",
-        animation: ball.mode === "idle" ? undefined : "fm-ball-spin 0.5s linear infinite",
       }}
     >
-      <svg viewBox="0 0 32 32" width="14" height="14">
-        <circle cx="16" cy="16" r="15" fill="#fafafa" stroke="#111" strokeWidth="1.2" />
-        <polygon points="16,6 21.5,10 19.5,17 12.5,17 10.5,10" fill="#111" />
-        <polygon points="5,12 10.5,10 12.5,17 8,21.5 3,19.5" fill="#111" opacity="0.92" />
-        <polygon points="27,12 21.5,10 19.5,17 24,21.5 29,19.5" fill="#111" opacity="0.92" />
-        <polygon points="12,27 8,21.5 12.5,17 19.5,17 24,21.5 20,27" fill="none" stroke="#111" strokeWidth="1" />
-        <circle cx="16" cy="16" r="15" fill="url(#fmBallShade)" />
-        <defs>
-          <radialGradient id="fmBallShade" cx="35%" cy="30%" r="70%">
-            <stop offset="0%" stopColor="#fff" stopOpacity="0.35" />
-            <stop offset="60%" stopColor="#fff" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-      </svg>
+      ⚽
     </div>
   );
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/10" style={{ aspectRatio: "100 / 64" }}>
-      <style>{`@keyframes fm-ball-spin { from { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)) hue-rotate(0deg); } to { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)) hue-rotate(0deg); } }`}</style>
       <div className="absolute inset-0" style={{ background: "repeating-linear-gradient(90deg, #0f4a2c 0 8%, #124f30 8% 16%)" }} />
       <svg viewBox="0 0 100 64" className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
         <g stroke="rgba(255,255,255,0.55)" strokeWidth="0.4" fill="none">
