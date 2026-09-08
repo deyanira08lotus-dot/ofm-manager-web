@@ -157,6 +157,11 @@ export default function LineupPage() {
                       {p ? p.name.split(" ").slice(-1)[0] : slot}
                     </p>
                     {p?.injury && <p className="rounded text-[9px] font-semibold text-[#fecdd3]">lesionado</p>}
+                      {p && !p.injury && (
+                        <p className="rounded text-[9px] font-semibold" style={{ color: p.fitness >= 70 ? "#86efac" : p.fitness >= 40 ? "#fde68a" : "#fca5a5" }}>
+                          Físico {Math.round(p.fitness)}%
+                        </p>
+                      )}
                   </div>
                 </button>
               );
@@ -256,7 +261,27 @@ export default function LineupPage() {
         </div>
       </div>
 
-      {/* Selector de jugador */}
+      {/* Resto del plantel */}
+              <Card title="Resto del plantel" subtitle="Jugadores fuera del banco actual — tocá un puesto en el campo para convocarlos">
+                <div className="space-y-1.5">
+                  {players
+                    .filter((p) => !starters.some((s) => s.id === p.id) && !bench.some((b) => b.id === p.id))
+                    .sort((a, b) => b.overall - a.overall)
+                    .map((p) => (
+                      <div key={p.id} className="flex items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5">
+                        <Rating value={p.overall} size="sm" />
+                        <span className="min-w-0 flex-1 truncate text-sm">{countryFlag(p.nationality)} {p.name}</span>
+                        <Badge className={GROUP_COLORS[POSITION_MAP[p.position].group]}>{POSITION_MAP[p.position].short}</Badge>
+                        <span className="w-9 text-right text-[11px]" style={{ color: p.fitness >= 70 ? "#86efac" : p.fitness >= 40 ? "#fde68a" : "#fca5a5" }}>{Math.round(p.fitness)}%</span>
+                      </div>
+                    ))}
+                  {players.filter((p) => !starters.some((s) => s.id === p.id) && !bench.some((b) => b.id === p.id)).length === 0 && (
+                    <p className="py-3 text-center text-xs text-white/35">No hay jugadores fuera del 11 y el banquillo.</p>
+                  )}
+                </div>
+              </Card>
+
+              {/* Selector de jugador */}
       <Modal open={!!picking} onClose={() => setPicking(null)} title={`Elegir jugador para ${picking ?? ""}`} wide>
         <div className="mb-3 flex items-center gap-2 text-xs text-white/45">
           <ArrowLeftRight size={13} /> Si eliges a un titular de otro puesto, se intercambian automáticamente.
