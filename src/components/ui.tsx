@@ -2,7 +2,6 @@
  * src/components/ui.tsx — sistema de componentes reutilizables.
  */
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
-import { useEffect } from "react";
 import { cn } from "@/utils/cn";
 import { ratingBg, ratingColor } from "@/game/format";
 
@@ -166,14 +165,6 @@ export function EmptyState({ icon, title, text, action }: { icon?: ReactNode; ti
 }
 
 export function Modal({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; wide?: boolean }) {
-  useEffect(() => {
-    if (!open) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/35 p-0 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
