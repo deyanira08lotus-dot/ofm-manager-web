@@ -2,7 +2,7 @@
  * src/pages/LineupPage.tsx — editor de alineación (campo interactivo) y tácticas.
  */
 import { useMemo, useState } from "react";
-import { ArrowLeftRight, Check, Save, Shield, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeftRight, BarChart3, Check, Save, Shield, Sparkles, Wand2 } from "lucide-react";
 import { Badge, Button, Card, Modal, Rating, Select } from "@/components/ui";
 import { useGame } from "@/state/GameContext";
 import { FORMATIONS, GROUP_COLORS, POSITION_MAP } from "@/game/data/traits";
@@ -25,6 +25,7 @@ export default function LineupPage() {
   const [draft, setDraft] = useState<Tactics | null>(club ? { ...club.tactics } : null);
   const [picking, setPicking] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [compareId, setCompareId] = useState<string | null>(null);
 
   const tactics = draft ?? club?.tactics;
   const slots = tactics ? FORMATIONS[tactics.formation] ?? FORMATIONS["4-3-3"] : [];
@@ -282,7 +283,7 @@ export default function LineupPage() {
               </Card>
 
               {/* Selector de jugador */}
-      <Modal open={!!picking} onClose={() => setPicking(null)} title={`Elegir jugador para ${picking ?? ""}`} wide>
+      <Modal open={!!picking} onClose={() => { setPicking(null); setCompareId(null); }} title={`Elegir jugador para ${picking ?? ""}`} wide>
         <div className="mb-3 flex items-center gap-2 text-xs text-white/45">
           <ArrowLeftRight size={13} /> Si eliges a un titular de otro puesto, se intercambian automáticamente.
         </div>
@@ -292,26 +293,66 @@ export default function LineupPage() {
             .map((p) => {
               const inLineup = Object.values(tactics.lineup).includes(p.id);
               return (
-                <button key={p.id} onClick={() => assign(picking!, p.id)}
-                        className={`flex items-center gap-3 rounded-xl border p-2.5 text-left transition ${
+                      <div key={p.id}>
+                        <div className={`flex items-center gap-3 rounded-xl border p-2.5 text-left transition ${
                           inLineup ? "border-turf-500/40 bg-turf-500/10" : "border-white/8 bg-ink-850 hover:border-white/20"}`}>
-                  <Rating value={p.overall} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{countryFlag(p.nationality)} {p.name}</p>
-                    <p className="text-[11px] text-white/40">
-                      {POSITION_MAP[p.position].short}
-                      {p.secondaryPositions.length ? ` · ${p.secondaryPositions.map((s) => POSITION_MAP[s].short).join("/")}` : ""}
-                      {" · "}Físico {Math.round(p.fitness)}%
-                    </p>
-                  </div>
-                  {p.injury ? <Badge className="border-rose-500/40 bg-rose-500/15 text-rose-300">Lesión</Badge> : inLineup ? <Check size={15} className="text-turf-400" /> : null}
-                </button>
-              );
-            })}
+                          <button onClick={() => assign(picking!, p.id)} className="flex flex-1 items-center gap-3 text-left">
+                            <Rating value={p.overall} size="sm" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium">{countryFlag(p.nationality)} {p.name}</p>
+                              <p className="text-[11px] text-white/40">
+                                {POSITION_MAP[p.position].short}
+                                {p.secondaryPositions.length ? ` · ${p.secondaryPositions.map((s) => POSITION_MAP[s].short).join("/")}` : ""}
+                                {" · "}Físico {Math.round(p.fitness)}%
+                              </p>
+                            </div>
+                          </button>
+                          {p.injury ? <Badge className="border-rose-500/40 bg-rose-500/15 text-rose-300">Lesión</Badge> : inLineup ? <Check size={15} className="text-turf-400" /> : null}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setCompareId(compareId === p.id ? null : p.id); }}
+                            className="rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white"
+                            title="Ver stats"
+                          >
+                            <BarChart3 size={15} />
+                          </button>
+                        </div>
+                        {compareId === p.id && (() => {
+                          const current = picking ? byId.get(tactics.lineup[picking] ?? "") : undefined;
+                          const isGK = p.position === "GK";
+                          const rows: [string, string][] = isGK
+                            ? [["reflexes", "Reflejos"], ["handling", "Atajada"], ["aerialReach", "Salida aérea"], ["kicking", "Saque"], ["oneOnOne", "Uno contra uno"], ["communication", "Comunicación"]]
+                            : [["pace", "Velocidad"], ["acceleration", "Aceleración"], ["dribbling", "Regate"], ["finishing", "Disparo"], ["passing", "Pases"], ["heading", "Cabeceo"], ["jumping", "Salto"], ["stamina", "Resistencia"]];
+                          return (
+                            <div className="mt-2 rounded-xl border border-white/10 bg-ink-850 p-3 text-xs">
+                              <div className="mb-2 grid grid-cols-2 gap-2 text-white/50">
+                                <span>{current ? current.name : "Vacío"}</span>
+                                <span className="text-right">{p.name}</span>
+                              </div>
+                              <div className="mb-2 grid grid-cols-2 gap-2 font-semibold">
+                                <span>{current ? current.overall : "-"}</span>
+                                <span className="text-right">{p.overall}</span>
+                              </div>
+                              <div className="mb-2 grid grid-cols-2 gap-2 text-white/50">
+                                <span>Edad {current ? current.age : "-"} · Físico {current ? Math.round(current.fitness) : "-"}%</span>
+                                <span className="text-right">Edad {p.age} · Físico {Math.round(p.fitness)}%</span>
+                              </div>
+                              {rows.map(([key, label]) => (
+                                <div key={key} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-0.5">
+                                  <span>{current ? (current.attributes as any)[key] : "-"}</span>
+                                  <span className="text-center text-white/30">{label}</span>
+                                  <span className="text-right">{(p.attributes as any)[key]}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })}
         </div>
         <div className="mt-4 flex justify-between">
           <Button variant="ghost" onClick={() => assign(picking!, null)}>Vaciar puesto</Button>
-          <Button variant="outline" onClick={() => setPicking(null)}>Cerrar</Button>
+          <Button variant="outline" onClick={() => { setPicking(null); setCompareId(null); }}>Cerrar</Button>
         </div>
       </Modal>
 
