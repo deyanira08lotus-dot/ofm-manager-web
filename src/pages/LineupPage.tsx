@@ -65,6 +65,18 @@ export default function LineupPage() {
     setPicking(null);
   };
 
+  const removeFromBench = (playerId: string) => {
+    set({ bench: bench.filter((b) => b.id !== playerId).map((b) => b.id) });
+  };
+
+  const addToBench = (playerId: string) => {
+    if (bench.length >= 7) {
+      alert("El banco ya tiene 7 jugadores. Sacá a alguien primero.");
+      return;
+    }
+    set({ bench: [...bench.map((b) => b.id), playerId] });
+  };
+
   const autoFill = () => {
     const used = new Set<string>();
     const lineup: Record<string, string | null> = {};
@@ -249,12 +261,12 @@ export default function LineupPage() {
           <Card title="Banquillo" subtitle="Los cambios se hacen automáticamente durante el partido">
             <div className="space-y-1.5">
               {bench.map((p) => (
-                <div key={p.id} className="flex items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5">
+                <button key={p.id} onClick={() => removeFromBench(p.id)} className="flex w-full items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5 text-left transition hover:bg-rose-500/10" title="Sacar del banco">
                   <Rating value={p.overall} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-sm">{countryFlag(p.nationality)} {p.name}</span>
                   <Badge className={GROUP_COLORS[POSITION_MAP[p.position].group]}>{POSITION_MAP[p.position].short}</Badge>
                   <span className="w-9 text-right text-[11px] text-white/40">{Math.round(p.fitness)}%</span>
-                </div>
+                </button>
               ))}
               {!bench.length && <p className="py-3 text-center text-xs text-white/35">Sin suplentes disponibles.</p>}
             </div>
@@ -269,12 +281,12 @@ export default function LineupPage() {
                     .filter((p) => !starters.some((s) => s.id === p.id) && !bench.some((b) => b.id === p.id))
                     .sort((a, b) => b.overall - a.overall)
                     .map((p) => (
-                      <div key={p.id} className="flex items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5">
+                      <button key={p.id} onClick={() => addToBench(p.id)} className="flex w-full items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5 text-left transition hover:bg-turf-500/10" title="Meter al banco">
                         <Rating value={p.overall} size="sm" />
                         <span className="min-w-0 flex-1 truncate text-sm">{countryFlag(p.nationality)} {p.name}</span>
                         <Badge className={GROUP_COLORS[POSITION_MAP[p.position].group]}>{POSITION_MAP[p.position].short}</Badge>
                         <span className="w-9 text-right text-[11px]" style={{ color: p.fitness >= 70 ? "#86efac" : p.fitness >= 40 ? "#fde68a" : "#fca5a5" }}>{Math.round(p.fitness)}%</span>
-                      </div>
+                      </button>
                     ))}
                   {players.filter((p) => !starters.some((s) => s.id === p.id) && !bench.some((b) => b.id === p.id)).length === 0 && (
                     <p className="py-3 text-center text-xs text-white/35">No hay jugadores fuera del 11 y el banquillo.</p>
