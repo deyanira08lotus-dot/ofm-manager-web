@@ -36,6 +36,11 @@ export default function LineupPage() {
     [tactics, players]
   );
 
+  const displayBench = useMemo(
+    () => (tactics ? (tactics.bench ?? []).map((id) => byId.get(id)).filter((p): p is Player => !!p) : []),
+    [tactics, byId]
+  );
+
   const power = useMemo(() => {
     if (!tactics || !club) return null;
     const coach = staff.find((s) => s.role === "Entrenador principal");
@@ -66,15 +71,15 @@ export default function LineupPage() {
   };
 
   const removeFromBench = (playerId: string) => {
-    set({ bench: bench.filter((b) => b.id !== playerId).map((b) => b.id) });
+    set({ bench: displayBench.filter((b) => b.id !== playerId).map((b) => b.id) });
   };
 
   const addToBench = (playerId: string) => {
-    if (bench.length >= 7) {
+    if (displayBench.length >= 7) {
       alert("El banco ya tiene 7 jugadores. Sacá a alguien primero.");
       return;
     }
-    set({ bench: [...bench.map((b) => b.id), playerId] });
+    set({ bench: [...displayBench.map((b) => b.id), playerId] });
   };
 
   const autoFill = () => {
@@ -104,7 +109,7 @@ export default function LineupPage() {
   };
 
   const save = async () => {
-    await saveTactics({ ...tactics, bench: bench.map((p) => p.id) });
+    await saveTactics({ ...tactics, bench: displayBench.map((p) => p.id) });
     setSaved(true);
   };
 
@@ -117,7 +122,7 @@ export default function LineupPage() {
         <div>
           <h1 className="text-2xl font-black">Alineación y táctica</h1>
           <p className="text-sm text-white/45">
-            {starters.length}/11 titulares · {bench.length} en el banquillo · Química {chem}%
+            {starters.length}/11 titulares · {displayBench.length} en el banquillo · Química {chem}%
           </p>
         </div>
         <div className="flex gap-2">
@@ -260,7 +265,7 @@ export default function LineupPage() {
           {/* Banquillo */}
           <Card title="Banquillo" subtitle="Los cambios se hacen automáticamente durante el partido">
             <div className="space-y-1.5">
-              {bench.map((p) => (
+              {displayBench.map((p) => (
                 <button key={p.id} onClick={() => removeFromBench(p.id)} className="flex w-full items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5 text-left transition hover:bg-rose-500/10" title="Sacar del banco">
                   <Rating value={p.overall} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-sm">{countryFlag(p.nationality)} {p.name}</span>
@@ -268,7 +273,7 @@ export default function LineupPage() {
                   <span className="w-9 text-right text-[11px] text-white/40">{Math.round(p.fitness)}%</span>
                 </button>
               ))}
-              {!bench.length && <p className="py-3 text-center text-xs text-white/35">Sin suplentes disponibles.</p>}
+              {!displayBench.length && <p className="py-3 text-center text-xs text-white/35">Sin suplentes disponibles.</p>}
             </div>
           </Card>
         </div>
@@ -278,7 +283,7 @@ export default function LineupPage() {
               <Card title="Resto del plantel" subtitle="Jugadores fuera del banco actual — tocá un puesto en el campo para convocarlos">
                 <div className="space-y-1.5">
                   {players
-                    .filter((p) => !starters.some((s) => s.id === p.id) && !bench.some((b) => b.id === p.id))
+                    .filter((p) => !starters.some((s) => s.id === p.id) && !displayBench.some((b) => b.id === p.id))
                     .sort((a, b) => b.overall - a.overall)
                     .map((p) => (
                       <button key={p.id} onClick={() => addToBench(p.id)} className="flex w-full items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5 text-left transition hover:bg-turf-500/10" title="Meter al banco">
@@ -288,7 +293,7 @@ export default function LineupPage() {
                         <span className="w-9 text-right text-[11px]" style={{ color: p.fitness >= 70 ? "#86efac" : p.fitness >= 40 ? "#fde68a" : "#fca5a5" }}>{Math.round(p.fitness)}%</span>
                       </button>
                     ))}
-                  {players.filter((p) => !starters.some((s) => s.id === p.id) && !bench.some((b) => b.id === p.id)).length === 0 && (
+                  {players.filter((p) => !starters.some((s) => s.id === p.id) && !displayBench.some((b) => b.id === p.id)).length === 0 && (
                     <p className="py-3 text-center text-xs text-white/35">No hay jugadores fuera del 11 y el banquillo.</p>
                   )}
                 </div>
