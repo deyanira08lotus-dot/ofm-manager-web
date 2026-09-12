@@ -76,8 +76,8 @@ export default function LineupPage() {
   };
 
   const addToBench = (playerId: string) => {
-    if (displayBench.length === 0) {
-      set({ bench: [playerId] });
+    if (displayBench.length < 7) {
+      set({ bench: [...displayBench.map((b) => b.id), playerId] });
       return;
     }
     setSwapTarget(playerId);
