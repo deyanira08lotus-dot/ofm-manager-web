@@ -26,6 +26,7 @@ export default function LineupPage() {
   const [picking, setPicking] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [compareId, setCompareId] = useState<string | null>(null);
+  const [swapTarget, setSwapTarget] = useState<string | null>(null);
 
   const tactics = draft ?? club?.tactics;
   const slots = tactics ? FORMATIONS[tactics.formation] ?? FORMATIONS["4-3-3"] : [];
@@ -75,11 +76,19 @@ export default function LineupPage() {
   };
 
   const addToBench = (playerId: string) => {
-    if (displayBench.length >= 7) {
-      alert("El banco ya tiene 7 jugadores. Sacá a alguien primero.");
+    if (displayBench.length === 0) {
+      set({ bench: [playerId] });
       return;
     }
-    set({ bench: [...displayBench.map((b) => b.id), playerId] });
+    setSwapTarget(playerId);
+  };
+
+  const confirmSwap = (outId: string) => {
+    if (!swapTarget) return;
+    const newBenchIds = displayBench.filter((b) => b.id !== outId).map((b) => b.id);
+    newBenchIds.push(swapTarget);
+    set({ bench: newBenchIds });
+    setSwapTarget(null);
   };
 
   const autoFill = () => {
@@ -370,6 +379,26 @@ export default function LineupPage() {
         <div className="mt-4 flex justify-between">
           <Button variant="ghost" onClick={() => assign(picking!, null)}>Vaciar puesto</Button>
           <Button variant="outline" onClick={() => { setPicking(null); setCompareId(null); }}>Cerrar</Button>
+        </div>
+      </Modal>
+
+      {/* Elegir a quién reemplazar en el banco */}
+      <Modal open={!!swapTarget} onClose={() => setSwapTarget(null)} title={`Elegir a quién sacar por ${swapTarget ? byId.get(swapTarget)?.name ?? "" : ""}`}>
+        <div className="space-y-1.5">
+          {displayBench.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => confirmSwap(p.id)}
+              className="flex w-full items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5 text-left transition hover:bg-turf-500/10"
+            >
+              <Rating value={p.overall} size="sm" />
+              <span className="min-w-0 flex-1 truncate text-sm">{countryFlag(p.nationality)} {p.name}</span>
+              <Badge className={GROUP_COLORS[POSITION_MAP[p.position].group]}>{POSITION_MAP[p.position].short}</Badge>
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="outline" onClick={() => setSwapTarget(null)}>Cancelar</Button>
         </div>
       </Modal>
 
