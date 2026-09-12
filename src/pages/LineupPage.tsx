@@ -2,7 +2,7 @@
  * src/pages/LineupPage.tsx — editor de alineación (campo interactivo) y tácticas.
  */
 import { useMemo, useState } from "react";
-import { ArrowLeftRight, BarChart3, Check, Save, Shield, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeftRight, BarChart3, Check, Save, Shield, Sparkles, Users, Wand2 } from "lucide-react";
 import { Badge, Button, Card, Modal, Rating, Select } from "@/components/ui";
 import { useGame } from "@/state/GameContext";
 import { FORMATIONS, GROUP_COLORS, POSITION_MAP } from "@/game/data/traits";
@@ -27,6 +27,7 @@ export default function LineupPage() {
   const [saved, setSaved] = useState(false);
   const [compareId, setCompareId] = useState<string | null>(null);
   const [swapTarget, setSwapTarget] = useState<string | null>(null);
+  const [starterSwapTarget, setStarterSwapTarget] = useState<string | null>(null);
 
   const tactics = draft ?? club?.tactics;
   const slots = tactics ? FORMATIONS[tactics.formation] ?? FORMATIONS["4-3-3"] : [];
@@ -89,6 +90,13 @@ export default function LineupPage() {
     newBenchIds.push(swapTarget);
     set({ bench: newBenchIds });
     setSwapTarget(null);
+  };
+
+  const swapWithStarter = (playerId: string, starterId: string) => {
+    const slot = Object.keys(tactics.lineup).find((sk) => tactics.lineup[sk] === starterId);
+    if (!slot) return;
+    assign(slot, playerId);
+    setStarterSwapTarget(null);
   };
 
   const autoFill = () => {
@@ -295,12 +303,17 @@ export default function LineupPage() {
                     .filter((p) => !starters.some((s) => s.id === p.id) && !displayBench.some((b) => b.id === p.id))
                     .sort((a, b) => b.overall - a.overall)
                     .map((p) => (
-                      <button key={p.id} onClick={() => addToBench(p.id)} className="flex w-full items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5 text-left transition hover:bg-turf-500/10" title="Meter al banco">
+                      <div key={p.id} className="flex items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5">
+                          <button onClick={() => addToBench(p.id)} className="flex flex-1 items-center gap-2.5 text-left" title="Meter al banco">
                         <Rating value={p.overall} size="sm" />
                         <span className="min-w-0 flex-1 truncate text-sm">{countryFlag(p.nationality)} {p.name}</span>
                         <Badge className={GROUP_COLORS[POSITION_MAP[p.position].group]}>{POSITION_MAP[p.position].short}</Badge>
                         <span className="w-9 text-right text-[11px]" style={{ color: p.fitness >= 70 ? "#86efac" : p.fitness >= 40 ? "#fde68a" : "#fca5a5" }}>{Math.round(p.fitness)}%</span>
                       </button>
+                          <button onClick={(e) => { e.stopPropagation(); setStarterSwapTarget(p.id); }} className="rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white" title="Cambiar por un titular">
+                            <Users size={15} />
+                          </button>
+                        </div>
                     ))}
                   {players.filter((p) => !starters.some((s) => s.id === p.id) && !displayBench.some((b) => b.id === p.id)).length === 0 && (
                     <p className="py-3 text-center text-xs text-white/35">No hay jugadores fuera del 11 y el banquillo.</p>
@@ -399,6 +412,26 @@ export default function LineupPage() {
         </div>
         <div className="mt-4 flex justify-end">
           <Button variant="outline" onClick={() => setSwapTarget(null)}>Cancelar</Button>
+        </div>
+      </Modal>
+
+      {/* Elegir titular para reemplazar */}
+      <Modal open={!!starterSwapTarget} onClose={() => setStarterSwapTarget(null)} title={`Elegir titular a reemplazar por ${starterSwapTarget ? byId.get(starterSwapTarget)?.name ?? "" : ""}`}>
+        <div className="space-y-1.5">
+          {starters.map((st) => (
+            <button
+              key={st.id}
+              onClick={() => swapWithStarter(starterSwapTarget!, st.id)}
+              className="flex w-full items-center gap-2.5 rounded-lg bg-white/4 px-2.5 py-1.5 text-left transition hover:bg-turf-500/10"
+            >
+              <Rating value={st.overall} size="sm" />
+              <span className="min-w-0 flex-1 truncate text-sm">{countryFlag(st.nationality)} {st.name}</span>
+              <Badge className={GROUP_COLORS[POSITION_MAP[st.position].group]}>{POSITION_MAP[st.position].short}</Badge>
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button variant="outline" onClick={() => setStarterSwapTarget(null)}>Cancelar</Button>
         </div>
       </Modal>
 
