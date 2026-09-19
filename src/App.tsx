@@ -20,6 +20,7 @@ import SettingsPage from "@/pages/SettingsPage";
 import LineupPage from "@/pages/LineupPage";
 import TrainingPage from "@/pages/TrainingPage";
 import LeaguePage from "@/pages/LeaguePage";
+import CalendarPage from "@/pages/CalendarPage";
 import MatchPage from "@/pages/MatchPage";
 import FinancePage from "@/pages/FinancePage";
 import MarketPage from "@/pages/MarketPage";
@@ -91,6 +92,7 @@ function Router() {
     case "alineacion": page = <LineupPage />; break;
     case "entrenamiento": page = <TrainingPage />; break;
     case "liga": page = <LeaguePage />; break;
+    case "calendario": page = <CalendarPage />; break;
     case "partido": page = <MatchPage matchId={param} />; break;
     case "club": page = <ClubPage />; break;
     case "finanzas": page = <FinancePage />; break;

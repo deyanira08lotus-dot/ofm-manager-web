@@ -167,4 +167,4 @@ function buildClub({ clubId, uid, managerName, clubName, shortName, country, col
   };
 }
 
-module.exports = { generateSquad, generatePlayer, buildClub, rngFactory, overallFor, marketValue, classOf };
+module.exports = { generateSquad, generatePlayer, buildClub, rngFactory, overallFor, marketValue, classOf, NAMES };

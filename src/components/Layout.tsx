@@ -4,7 +4,7 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  Bell, Briefcase, CalendarDays, ChevronRight, ClipboardList, Coins, Dumbbell, Gavel, GraduationCap,
+  Bell, Briefcase, Calendar, CalendarDays, ChevronRight, ClipboardList, Coins, Dumbbell, Gavel, GraduationCap,
   Flag, LayoutDashboard, LogOut, Menu, Newspaper, Settings, ShieldCheck, ShieldHalf, ShoppingCart,
   Sparkles, Star,
   MessagesSquare, Radar, Radio, RefreshCw, Trophy, User, Users, WifiOff, X,
@@ -33,6 +33,7 @@ const NAV: NavItem[] = [
   { to: "/entrenamiento", label: "Entrenamiento", icon: <Dumbbell size={18} /> },
   { to: "/vestuario", label: "Vestuario", icon: <MessagesSquare size={18} /> },
   { to: "/liga", label: "Liga y partidos", icon: <CalendarDays size={18} />, mobile: true },
+  { to: "/calendario", label: "Calendario", icon: <Calendar size={18} />, mobile: true },
   { to: "/copas", label: "Copas", icon: <Trophy size={18} /> },
   { to: "/club", label: "Club", icon: <ShieldHalf size={18} /> },
   { to: "/finanzas", label: "Economía", icon: <Coins size={18} /> },
